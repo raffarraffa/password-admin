@@ -47,7 +47,7 @@ export async function ExportCSV(accountID) {
   link.href = url;
   link.download = "chrome-passwords.csv";
   link.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   return true;
 }
 export const DeletePassword = (entryID) => request("delete-password", { entryID });

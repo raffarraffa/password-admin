@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -29,16 +28,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	addr := flag.String("addr", "127.0.0.1:"+port, "dirección local de escucha")
-	flag.Parse()
-
 	assets, err := fs.Sub(frontend, "frontend")
 	if err != nil {
 		log.Fatal(err)
 	}
 	application := NewApp()
+	addr := net.JoinHostPort("127.0.0.1", port)
 	server := &http.Server{
-		Addr:              *addr,
+		Addr:              addr,
 		Handler:           newWebHandler(application, http.FS(assets)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
