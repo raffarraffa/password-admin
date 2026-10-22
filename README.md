@@ -5,13 +5,14 @@ Aplicación web local hecha con Go, HTML, CSS y JavaScript. El ejecutable sirve 
 
 ## Iniciar el servidor web
 
-Por defecto, Password Admin escucha únicamente en `http://127.0.0.1:45678`. Para cambiar el puerto, crea un archivo `.env` en la carpeta desde la que inicias el ejecutable o junto al ejecutable:
+Por defecto, Password Admin escucha únicamente en `http://127.0.0.1:45678/`. Para publicarlo bajo una subruta, por ejemplo `https://example.com/pass-admin/`, configura también `BASE_PATH`. Crea un archivo `.env` en la carpeta desde la que inicias el ejecutable o junto al ejecutable:
 
 ```env
 PORT=45678
+BASE_PATH=/pass-admin
 ```
 
-El proceso lee `.env` al iniciar. Si la variable de entorno `PORT` está definida, tiene prioridad sobre el archivo. Si no se configura ninguna, se usa el puerto `45678`. El puerto debe estar entre 1 y 65535.
+El proceso lee `.env` al iniciar. Las variables de entorno `PORT` y `BASE_PATH`, si están definidas, tienen prioridad sobre el archivo. Si no se configura `PORT`, se usa `45678`. `BASE_PATH` debe ser una ruta absoluta sencilla, sin barra final (por ejemplo, `/pass-admin`); si se omite o vale `/`, la aplicación se publica en la raíz. El servidor agrega la barra final y el HTML fija ese prefijo como base para que CSS, JavaScript y API sigan en `/pass-admin/`, incluso si alguien entra por `https://example.com/pass-admin` sin la barra final.
 
 Para compilar y ejecutar un binario (también sirve para desarrollo):
 
@@ -20,10 +21,14 @@ go build -o PasswordAdmin.exe .
 .\PasswordAdmin.exe
 ```
 
-Abre en el navegador la dirección que imprime el servidor. Para Nginx, configura el upstream hacia `http://127.0.0.1:<PORT>` y conserva el `Host` original para que coincida con el origen del navegador. **No publiques el upstream sin protección**: el backend sirve la bóveda desbloqueada del proceso. Usa HTTPS y restringe el acceso en Nginx con autenticación y/o una VPN. Por ejemplo, dentro de un `server` HTTPS:
+Abre en el navegador la dirección que imprime el servidor. Para Nginx, configura el upstream hacia `http://127.0.0.1:<PORT>` y conserva el `Host` original. El `BASE_PATH` configurado en `.env` debe coincidir con el prefijo público. El backend acepta tanto el prefijo conservado como el prefijo eliminado por Nginx, así que funcionan ambas variantes de `proxy_pass`. **No publiques el upstream sin protección**: el backend sirve la bóveda desbloqueada del proceso. Usa HTTPS y restringe el acceso en Nginx con autenticación y/o una VPN. Por ejemplo, dentro de un `server` HTTPS para `/pass-admin/`, esta variante conserva el prefijo:
 
 ```nginx
-location / {
+location = /pass-admin {
+    return 301 /pass-admin/;
+}
+
+location /pass-admin/ {
     auth_basic "Password Admin";
     auth_basic_user_file /etc/nginx/.htpasswd;
     proxy_pass http://127.0.0.1:45678;
@@ -32,7 +37,7 @@ location / {
 }
 ```
 
-Mantén el servidor Go escuchando en la interfaz local.
+Sin barra final en `proxy_pass`, Nginx conserva `/pass-admin/`; con barra final, elimina ese prefijo antes de reenviar. El backend sirve la interfaz, CSS, JavaScript y API en ambos casos. Mantén el servidor Go escuchando en la interfaz local.
 
 ## Configurar GitHub por primera vez
 
@@ -150,23 +155,75 @@ Copy-Item .env .\dist\.env
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
 ```
 
-El ejecutable Linux no es un `.exe`: transfiérelo a una máquina Linux de la misma arquitectura. Allí, desde la carpeta de instalación:
+El ejecutable Linux no es un `.exe`: transfiérelo junto con `dist/.env` a una máquina Linux de la misma arquitectura. Por ejemplo, instala ambos archivos en una carpeta propia:
 
 ```sh
+mkdir -p "$HOME/password-admin"
+cp password-admin-linux-amd64 .env "$HOME/password-admin/"
+cd "$HOME/password-admin"
 chmod 700 password-admin-linux-amd64
 ./password-admin-linux-amd64
 ```
 
 El servidor imprime la URL local. Déjalo ejecutándose para que Nginx pueda conectarse al upstream `127.0.0.1:45678`. La carpeta del ejecutable debe permitir escritura porque allí se guardan la configuración de GitHub y las credenciales cifradas. Mantén el `.env` junto al ejecutable (o inicia el proceso desde la carpeta que lo contiene) y restringe el acceso a esos archivos.
 
+### Ejecutar en segundo plano como servicio de Linux
+
+En un servidor con `systemd`, instala el binario y `.env` en una carpeta persistente. El servicio se ejecuta con un usuario propio y se reinicia automáticamente si el proceso falla:
+
+```sh
+sudo useradd --system --create-home --home-dir /opt/password-admin --shell /usr/sbin/nologin password-admin
+sudo install -o password-admin -g password-admin -m 700 password-admin-linux-amd64 /opt/password-admin/password-admin
+sudo install -o password-admin -g password-admin -m 600 .env /opt/password-admin/.env
+```
+
+Crea `/etc/systemd/system/password-admin.service`:
+
+```ini
+[Unit]
+Description=Password Admin web server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=password-admin
+Group=password-admin
+WorkingDirectory=/opt/password-admin
+ExecStart=/opt/password-admin/password-admin
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/password-admin
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Activa e inicia el servicio:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now password-admin
+sudo systemctl status password-admin
+```
+
+Consulta los logs en vivo con `sudo journalctl -u password-admin -f`. La aplicación escucha en `127.0.0.1:45678` de acuerdo con el `.env`; Nginx puede usar esa dirección como upstream. Para cambiar el puerto, edita `/opt/password-admin/.env` y reinicia con `sudo systemctl restart password-admin`.
+
+El usuario del servicio necesita permiso de escritura en `/opt/password-admin`: allí se guardan la configuración de GitHub y las credenciales cifradas. No ejecutes simultáneamente otra copia de la aplicación con la misma configuración, porque ambas compartirían la misma bóveda en memoria.
+
 También puedes compilar en Linux directamente:
 
 ```sh
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o password-admin-linux-amd64 .
-cp .env ./dist/.env
+mkdir -p dist
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o dist/password-admin-linux-amd64 .
+cp .env dist/.env
 ```
 
-Antes del primer inicio, crea `dist` si todavía no existe, o copia el `.env` directamente a la carpeta de instalación. En producción, configura Nginx con HTTPS y autenticación; no expongas el servidor sin protección. Consulta el ejemplo de Nginx en [Iniciar el servidor web](#iniciar-el-servidor-web).
+En producción, configura Nginx con HTTPS y autenticación; no expongas el servidor sin protección. Consulta el ejemplo de Nginx en [Iniciar el servidor web](#iniciar-el-servidor-web).
 
 ## Solución de problemas
 

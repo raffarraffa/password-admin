@@ -1,5 +1,5 @@
 async function request(endpoint, body = {}) {
-  const response = await fetch(`/api/${endpoint}`, {
+  const response = await fetch(`api/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -23,7 +23,7 @@ export async function ImportLocalVault(password, file) {
   const body = new FormData();
   body.append("password", password);
   body.append("vault", file, file.name);
-  const response = await fetch("/api/import-local-vault", {
+  const response = await fetch("api/import-local-vault", {
     method: "POST",
     body,
     cache: "no-store",

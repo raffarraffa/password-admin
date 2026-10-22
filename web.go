@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,7 +9,9 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
+	"time"
 )
 
 const (
@@ -17,12 +20,34 @@ const (
 )
 
 type webHandler struct {
-	app    *App
-	static http.Handler
+	app      *App
+	assets   http.FileSystem
+	static   http.Handler
+	basePath string
 }
 
-func newWebHandler(app *App, static http.FileSystem) http.Handler {
-	return &webHandler{app: app, static: http.FileServer(static)}
+func newWebHandler(app *App, static http.FileSystem, basePaths ...string) http.Handler {
+	basePath := ""
+	if len(basePaths) > 0 {
+		basePath = basePaths[0]
+	}
+	return &webHandler{app: app, assets: static, static: http.FileServer(static), basePath: basePath}
+}
+
+func normalizeBasePath(basePath string) (string, error) {
+	basePath = strings.TrimSpace(basePath)
+	if basePath == "" || basePath == "/" {
+		return "", nil
+	}
+	basePath = strings.TrimSuffix(basePath, "/")
+	if !strings.HasPrefix(basePath, "/") {
+		basePath = "/" + basePath
+	}
+	if strings.ContainsAny(basePath, `?#%\\<>"'`) || strings.Contains(basePath, "//") ||
+		path.Clean(basePath) != basePath {
+		return "", fmt.Errorf("BASE_PATH debe ser una ruta absoluta limpia, por ejemplo /pass-admin")
+	}
+	return basePath, nil
 }
 
 func (h *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +57,28 @@ func (h *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 
+	if h.basePath != "" {
+		if r.URL.Path == h.basePath {
+			location := h.basePath + "/"
+			if r.URL.RawQuery != "" {
+				location += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, location, http.StatusPermanentRedirect)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, h.basePath+"/") {
+			r2 := r.Clone(r.Context())
+			urlCopy := *r.URL
+			urlCopy.Path = strings.TrimPrefix(r.URL.Path, h.basePath)
+			r2.URL = &urlCopy
+			r = r2
+		}
+	}
+
+	if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+		h.serveIndex(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		h.serveAPI(w, r)
 		return
@@ -41,6 +88,31 @@ func (h *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.static.ServeHTTP(w, r)
+}
+
+func (h *webHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+	file, err := h.assets.Open("index.html")
+	if err != nil {
+		http.Error(w, "no se pudo cargar la interfaz", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "no se pudo leer la interfaz", http.StatusInternalServerError)
+		return
+	}
+	baseHref := h.basePath + "/"
+	if h.basePath == "" {
+		baseHref = "/"
+	}
+	content = bytes.ReplaceAll(content, []byte("{{BASE_HREF}}"), []byte(baseHref))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(content))
 }
 
 func (h *webHandler) serveAPI(w http.ResponseWriter, r *http.Request) {
