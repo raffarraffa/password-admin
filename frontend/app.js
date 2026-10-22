@@ -155,8 +155,15 @@ $("#import-existing").addEventListener("click", async () => {
     $("#master-password").focus();
     return;
   }
+  $("#sqlite-file").value = "";
+  $("#sqlite-file").click();
+});
+
+$("#sqlite-file").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
   try {
-    await ImportLocalVault(password);
+    await ImportLocalVault($("#master-password").value, file);
     const status = await VaultStatus();
     githubConfig = status.config || githubConfig;
     if (!status.unlocked) {
@@ -197,13 +204,6 @@ $("#github-settings").addEventListener("click", () => {
   returnToVault = true;
   showGitHubSetup(githubConfig, true);
 });
-
-if (window.runtime?.EventsOn) {
-  window.runtime.EventsOn("vault-sync-error", (message) => {
-    $("#sync-status").textContent = "Error al guardar";
-    notify(message, true);
-  });
-}
 
 async function refreshAccounts(preferredAccountName = "") {
   accounts = await Accounts();
