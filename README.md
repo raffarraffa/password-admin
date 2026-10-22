@@ -34,6 +34,22 @@ location / {
 
 Mantén el servidor Go escuchando en la interfaz local.
 
+Para publicarlo en una subruta como `http://server/pass-admin/`, usa rutas relativas en el navegador y conserva esa barra final. Con Nginx puedes eliminar el prefijo al reenviar al backend:
+
+```nginx
+location = /pass-admin {
+    return 301 /pass-admin/;
+}
+
+location /pass-admin/ {
+    proxy_pass http://127.0.0.1:45678/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+La barra final de `proxy_pass` hace que Nginx quite `/pass-admin/` al enviar la solicitud a Go, mientras el navegador conserva el prefijo para cargar `./app.css`, `./app.js` y `./api/...`. Si la ruta pública es otra, reemplaza `/pass-admin` en ambas reglas.
+
 ## Configurar GitHub por primera vez
 
 ### 1. Crear el repositorio privado

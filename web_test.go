@@ -23,6 +23,18 @@ func TestWebHandlerServesFrontend(t *testing.T) {
 	if !strings.Contains(response.Body.String(), "Password Admin") {
 		t.Fatal("GET / did not return the Password Admin interface")
 	}
+	if !strings.Contains(response.Body.String(), `href="./app.css"`) ||
+		!strings.Contains(response.Body.String(), `src="./app.js"`) {
+		t.Fatal("frontend assets must use paths relative to the application URL")
+	}
+	backend, err := frontend.ReadFile("frontend/backend.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(backend), "fetch(`./api/") ||
+		!strings.Contains(string(backend), `fetch("./api/import-local-vault"`) {
+		t.Fatal("frontend API requests must use paths relative to the application URL")
+	}
 }
 
 func TestWebHandlerRejectsCrossOriginAPIRequests(t *testing.T) {

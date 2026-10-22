@@ -35,3 +35,5 @@ password-admin.credentials-*
 # Editor/IDE
 # .idea/
 # .vscode/
+/dist
+/dist
