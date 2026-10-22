@@ -115,9 +115,58 @@ La opción **Todas las cuentas** muestra y busca las entradas de toda la bóveda
 
 Se reconocen los encabezados `url` y `password`; `name` y `username` son opcionales. El CSV se procesa correctamente aunque tenga comas, comillas o saltos de línea dentro de los valores.
 
-## Compilar
+## Compilar para Linux y Windows
 
-Desde la raíz del proyecto, compila para la plataforma actual con `go build -o PasswordAdmin.exe .` en Windows o `go build -o password-admin .` en Linux/macOS. Para compilar para otros sistemas, define las variables `GOOS` y `GOARCH` según la plataforma destino. Al distribuir el ejecutable, coloca `.env` junto a él si necesitas configurar el puerto.
+Instala Go 1.22 o posterior y ejecuta los comandos desde la raíz del proyecto. No hace falta Wails, Node.js, SQLite externo ni compilar el frontend. Los ejemplos generan binarios para Intel/AMD de 64 bits (`amd64`); para un servidor Linux ARM de 64 bits, cambia `GOARCH=amd64` por `GOARCH=arm64`.
+
+### Compilar en Windows
+
+En PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force .\dist | Out-Null
+$env:GOOS = "windows"
+$env:GOARCH = "amd64"
+$env:CGO_ENABLED = "0"
+go build -trimpath -o .\dist\PasswordAdmin-windows-amd64.exe .
+if ($LASTEXITCODE -ne 0) { throw "Falló la compilación para Windows" }
+Copy-Item .env .\dist\.env
+```
+
+Para iniciarlo, ejecuta `.\dist\PasswordAdmin-windows-amd64.exe`. El archivo `.env` de `dist` configura el puerto. Si lo ejecutas desde otra carpeta, copia también `.env` junto al ejecutable o define `PORT` en el entorno de Windows antes de iniciarlo.
+
+### Compilar para Linux desde Windows
+
+Go permite generar el binario Linux desde Windows sin instalar herramientas de compilación de Linux:
+
+```powershell
+New-Item -ItemType Directory -Force .\dist | Out-Null
+$env:GOOS = "linux"
+$env:GOARCH = "amd64"
+$env:CGO_ENABLED = "0"
+go build -trimpath -o .\dist\password-admin-linux-amd64 .
+if ($LASTEXITCODE -ne 0) { throw "Falló la compilación para Linux" }
+Copy-Item .env .\dist\.env
+Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
+```
+
+El ejecutable Linux no es un `.exe`: transfiérelo a una máquina Linux de la misma arquitectura. Allí, desde la carpeta de instalación:
+
+```sh
+chmod 700 password-admin-linux-amd64
+./password-admin-linux-amd64
+```
+
+El servidor imprime la URL local. Déjalo ejecutándose para que Nginx pueda conectarse al upstream `127.0.0.1:45678`. La carpeta del ejecutable debe permitir escritura porque allí se guardan la configuración de GitHub y las credenciales cifradas. Mantén el `.env` junto al ejecutable (o inicia el proceso desde la carpeta que lo contiene) y restringe el acceso a esos archivos.
+
+También puedes compilar en Linux directamente:
+
+```sh
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o password-admin-linux-amd64 .
+cp .env ./dist/.env
+```
+
+Antes del primer inicio, crea `dist` si todavía no existe, o copia el `.env` directamente a la carpeta de instalación. En producción, configura Nginx con HTTPS y autenticación; no expongas el servidor sin protección. Consulta el ejemplo de Nginx en [Iniciar el servidor web](#iniciar-el-servidor-web).
 
 ## Solución de problemas
 
