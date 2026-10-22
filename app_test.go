@@ -1,61 +1,128 @@
 package main
 
 import (
-	"os"
+	"bytes"
 	"path/filepath"
 	"testing"
 )
 
-func TestResolveVaultPathUsesProjectRootInDevelopment(t *testing.T) {
-	projectDir := t.TempDir()
-	executableDir := filepath.Join(projectDir, "build", "bin")
-	if err := os.MkdirAll(executableDir, 0700); err != nil {
+func TestMemoryStoreSerializeDeserialize(t *testing.T) {
+	store, err := openMemoryStore()
+	if err != nil {
 		t.Fatal(err)
 	}
-	legacyPath := filepath.Join(executableDir, "vault.sqlite")
-	if err := os.WriteFile(legacyPath, []byte("existing vault"), 0600); err != nil {
+	defer store.close()
+
+	if err := store.initialize("correct horse battery staple"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(legacyPath+"-wal", []byte("wal data"), 0600); err != nil {
+	account, err := store.addAccount("Personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := PasswordEntry{
+		Name:     "Example",
+		URL:      "https://example.test",
+		Username: "alice",
+		Password: "secret-value",
+	}
+	if err := store.addPasswords(account.ID, []PasswordEntry{entry}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := resolveVaultPath(filepath.Join(executableDir, "Password Admin-dev.exe"), projectDir, true)
+	database, err := store.serialize()
 	if err != nil {
-		t.Fatalf("resolveVaultPath() error = %v", err)
+		t.Fatal(err)
 	}
-	want := filepath.Join(projectDir, "vault.sqlite")
-	if got != want {
-		t.Fatalf("resolveVaultPath() = %q, want %q", got, want)
+	defer clear(database)
+	if bytes.Contains(database, []byte(entry.Password)) {
+		t.Fatal("serialized vault unexpectedly contains a plaintext password")
 	}
-	for _, file := range []struct {
-		source, destination, expected string
-	}{
-		{legacyPath, want, "existing vault"},
-		{legacyPath + "-wal", want + "-wal", "wal data"},
-	} {
-		if _, err := os.Stat(file.source); !os.IsNotExist(err) {
-			t.Fatalf("legacy file %q still exists or stat failed: %v", file.source, err)
-		}
-		data, err := os.ReadFile(file.destination)
-		if err != nil {
-			t.Fatalf("ReadFile() error = %v", err)
-		}
-		if string(data) != file.expected {
-			t.Fatalf("moved file contents = %q, want %q", data, file.expected)
-		}
+
+	restored, err := openUninitializedMemoryStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.close()
+	if err := restored.deserialize(database); err != nil {
+		t.Fatalf("deserialize() error = %v", err)
+	}
+	unlocked, err := restored.unlock("correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unlocked {
+		t.Fatal("restored store did not unlock with the correct password")
+	}
+	accounts, err := restored.accounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accounts) != 1 || accounts[0].Name != "Personal" {
+		t.Fatalf("restored accounts = %#v, want one Personal account", accounts)
+	}
+	passwords, err := restored.passwords(account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(passwords) != 1 || passwords[0].Password != entry.Password ||
+		passwords[0].Username != entry.Username {
+		t.Fatalf("restored passwords = %#v, want %#v", passwords, entry)
 	}
 }
 
-func TestResolveVaultPathUsesExecutableDirectoryOutsideDevelopment(t *testing.T) {
-	projectDir := t.TempDir()
-	executableDir := filepath.Join(projectDir, "build", "bin")
-	got, err := resolveVaultPath(filepath.Join(executableDir, "Password Admin.exe"), projectDir, false)
+func TestReadOnlyVaultSnapshotImport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "folder with spaces", "vault.sqlite")
+	source, err := openStore(path)
 	if err != nil {
-		t.Fatalf("resolveVaultPath() error = %v", err)
+		t.Fatal(err)
 	}
-	want := filepath.Join(executableDir, "vault.sqlite")
-	if got != want {
-		t.Fatalf("resolveVaultPath() = %q, want %q", got, want)
+	if err := source.initialize("correct horse battery staple"); err != nil {
+		t.Fatal(err)
+	}
+	account, err := source.addAccount("Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.addPasswords(account.ID, []PasswordEntry{{
+		Name: "Example", URL: "https://example.test", Username: "alice", Password: "secret",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := openReadOnlyStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := local.serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := local.close(); err != nil {
+		t.Fatal(err)
+	}
+	defer clear(snapshot)
+
+	imported, err := openUninitializedMemoryStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer imported.close()
+	if err := imported.deserialize(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	unlocked, err := imported.unlock("correct horse battery staple")
+	if err != nil || !unlocked {
+		t.Fatalf("unlock imported vault = (%v, %v), want (true, nil)", unlocked, err)
+	}
+	entries, err := imported.passwords(account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Password != "secret" {
+		t.Fatalf("imported entries = %#v, want the original password", entries)
 	}
 }

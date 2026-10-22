@@ -1,8 +1,10 @@
 const app = () => window.go.main.App;
 
 export const VaultStatus = () => app().VaultStatus();
+export const ConfigureGitHub = (owner, repo, token) => app().ConfigureGitHub(owner, repo, token);
 export const SetupVault = (password) => app().SetupVault(password);
 export const UnlockVault = (password) => app().UnlockVault(password);
+export const ImportLocalVault = (password) => app().ImportLocalVault(password);
 export const Accounts = () => app().Accounts();
 export const CreateAccount = (name) => app().CreateAccount(name);
 export const Passwords = (accountID) => app().Passwords(accountID);
@@ -12,3 +14,4 @@ export const ImportCSV = (content, accountID, newAccountName) =>
   app().ImportCSV(content, accountID, newAccountName);
 export const ExportCSV = (accountID) => app().ExportCSV(accountID);
 export const DeletePassword = (id) => app().DeletePassword(id);
+export const SyncVault = () => app().SyncVault();

@@ -16,6 +16,22 @@ export namespace main {
 	        this.passwordCount = source["passwordCount"];
 	    }
 	}
+	export class GitHubConfig {
+	    owner: string;
+	    repo: string;
+	    initialized?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.owner = source["owner"];
+	        this.repo = source["repo"];
+	        this.initialized = source["initialized"];
+	    }
+	}
 	export class ImportResult {
 	    accountName: string;
 	    count: number;
@@ -71,8 +87,12 @@ export namespace main {
 	    }
 	}
 	export class VaultStatus {
+	    configured: boolean;
+	    hasToken: boolean;
 	    initialized: boolean;
 	    unlocked: boolean;
+	    remoteExists: boolean;
+	    config: GitHubConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultStatus(source);
@@ -80,9 +100,31 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configured = source["configured"];
+	        this.hasToken = source["hasToken"];
 	        this.initialized = source["initialized"];
 	        this.unlocked = source["unlocked"];
+	        this.remoteExists = source["remoteExists"];
+	        this.config = this.convertValues(source["config"], GitHubConfig);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

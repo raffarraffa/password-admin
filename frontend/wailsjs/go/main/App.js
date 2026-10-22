@@ -6,6 +6,10 @@ export function Accounts() {
   return window['go']['main']['App']['Accounts']();
 }
 
+export function ConfigureGitHub(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ConfigureGitHub'](arg1, arg2, arg3);
+}
+
 export function CreateAccount(arg1) {
   return window['go']['main']['App']['CreateAccount'](arg1);
 }
@@ -22,6 +26,10 @@ export function ImportCSV(arg1, arg2, arg3) {
   return window['go']['main']['App']['ImportCSV'](arg1, arg2, arg3);
 }
 
+export function ImportLocalVault(arg1) {
+  return window['go']['main']['App']['ImportLocalVault'](arg1);
+}
+
 export function PasswordDetails(arg1) {
   return window['go']['main']['App']['PasswordDetails'](arg1);
 }
@@ -36,6 +44,10 @@ export function PreviewCSV(arg1) {
 
 export function SetupVault(arg1) {
   return window['go']['main']['App']['SetupVault'](arg1);
+}
+
+export function SyncVault() {
+  return window['go']['main']['App']['SyncVault']();
 }
 
 export function UnlockVault(arg1) {

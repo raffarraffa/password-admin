@@ -8,10 +8,31 @@
     <link rel="stylesheet" href="/app.css">
   </head>
   <body>
+    <main id="github-gate" class="gate hidden">
+      <section class="gate-card">
+        <div class="brand-mark" aria-hidden="true">P</div>
+        <p class="eyebrow">REPOSITORIO PRIVADO</p>
+        <h1>Conectar con GitHub</h1>
+        <p class="muted">La bóveda cifrada se guardará en tu repositorio privado. El token quedará cifrado junto al ejecutable y protegido por tu contraseña maestra.</p>
+        <form id="github-form" class="stack">
+          <label for="github-owner">Propietario del repositorio</label>
+          <input id="github-owner" autocomplete="off" placeholder="tu-usuario-o-organización" required>
+          <label for="github-repo">Nombre del repositorio</label>
+          <input id="github-repo" autocomplete="off" placeholder="password-vault" required>
+          <label for="github-token">Token fine-grained de GitHub</label>
+          <input id="github-token" type="password" autocomplete="new-password" required>
+          <p class="field-help">Usa un token con acceso solo a este repositorio y permisos de Contents: lectura y escritura. No lo guardes en el repositorio.</p>
+          <button class="button primary" type="submit">Conectar repositorio</button>
+          <button id="github-cancel" class="button secondary hidden" type="button">Cancelar</button>
+        </form>
+        <p class="security-note">El contenido se cifra antes de salir de tu equipo. La conexión a internet es necesaria para abrir y guardar.</p>
+      </section>
+    </main>
+
     <main id="gate" class="gate">
       <section class="gate-card">
         <div class="brand-mark" aria-hidden="true">P</div>
-        <p class="eyebrow">BÓVEDA LOCAL</p>
+        <p class="eyebrow">BÓVEDA CIFRADA EN GITHUB</p>
         <h1 id="gate-title">Password Admin</h1>
         <p id="gate-description" class="muted"></p>
         <form id="gate-form" class="stack">
@@ -23,7 +44,8 @@
           </div>
           <button id="gate-submit" class="button primary" type="submit">Desbloquear</button>
         </form>
-        <p class="security-note">Tus credenciales se cifran y permanecen en este dispositivo.</p>
+        <button id="import-existing" class="button secondary hidden" type="button">Importar bóveda SQLite existente</button>
+        <p class="security-note">La base de trabajo vive solo en memoria; la copia persistente se cifra antes de subirla al repositorio privado.</p>
       </section>
     </main>
 
@@ -31,14 +53,21 @@
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark small" aria-hidden="true">P</div>
-          <div><strong>Password Admin</strong><span>Bóveda local</span></div>
+          <div><strong>Password Admin</strong><span>Bóveda privada en GitHub</span></div>
         </div>
         <div class="section-heading">
           <span>CUENTAS</span>
           <button id="add-account" class="icon-button" type="button" aria-label="Crear cuenta" title="Crear cuenta">+</button>
         </div>
         <nav id="account-list" class="account-list" aria-label="Cuentas"></nav>
-        <div class="sidebar-foot"><span class="status-dot"></span> Cifrado activo</div>
+        <div class="sidebar-foot">
+          <span class="status-dot"></span>
+          <span id="sync-status">Cifrado activo</span>
+        </div>
+        <div class="sidebar-actions">
+          <button id="sync-button" class="button secondary" type="button">Guardar en GitHub</button>
+          <button id="github-settings" class="button secondary" type="button">Configurar GitHub</button>
+        </div>
       </aside>
 
       <section class="workspace">
