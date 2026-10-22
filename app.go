@@ -279,7 +279,11 @@ func (a *App) ImportLocalVault(password string, data []byte) error {
 		return fmt.Errorf("crear archivo temporal para importar la base SQLite: %w", err)
 	}
 	path := temp.Name()
-	defer os.Remove(path)
+	defer func() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "no se pudo eliminar el archivo temporal de importación SQLite: %v\n", err)
+		}
+	}()
 	if err := temp.Chmod(0600); err != nil {
 		temp.Close()
 		return fmt.Errorf("proteger archivo temporal de importación: %w", err)

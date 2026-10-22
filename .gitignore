@@ -28,6 +28,10 @@ go.work.sum
 # env file
 .env
 
+# Local GitHub settings and encrypted credentials
+password-admin.json
+password-admin.credentials-*
+
 # Editor/IDE
 # .idea/
 # .vscode/

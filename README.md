@@ -13,20 +13,26 @@ PORT=45678
 
 El proceso lee `.env` al iniciar. Si la variable de entorno `PORT` está definida, tiene prioridad sobre el archivo. Si no se configura ninguna, se usa el puerto `45678`. El puerto debe estar entre 1 y 65535.
 
-Desde el código fuente:
-
-```powershell
-go run .
-```
-
-Para compilar y ejecutar un binario:
+Para compilar y ejecutar un binario (también sirve para desarrollo):
 
 ```powershell
 go build -o PasswordAdmin.exe .
 .\PasswordAdmin.exe
 ```
 
-Abre en el navegador la dirección que imprime el servidor. Para Nginx, configura el upstream hacia `http://127.0.0.1:<PORT>`. **No publiques el upstream sin protección**: el backend sirve la bóveda desbloqueada del proceso. Restringe el acceso en Nginx, por ejemplo con autenticación y/o una VPN. Mantén el servidor escuchando en la interfaz local.
+Abre en el navegador la dirección que imprime el servidor. Para Nginx, configura el upstream hacia `http://127.0.0.1:<PORT>` y conserva el `Host` original para que coincida con el origen del navegador. **No publiques el upstream sin protección**: el backend sirve la bóveda desbloqueada del proceso. Usa HTTPS y restringe el acceso en Nginx con autenticación y/o una VPN. Por ejemplo, dentro de un `server` HTTPS:
+
+```nginx
+location / {
+    auth_basic "Password Admin";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+    proxy_pass http://127.0.0.1:45678;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Mantén el servidor Go escuchando en la interfaz local.
 
 ## Configurar GitHub por primera vez
 
@@ -122,4 +128,3 @@ Desde la raíz del proyecto, compila para la plataforma actual con `go build -o 
 - **No se puede desbloquear en el segundo dispositivo:** verifica que copiaste juntos el ejecutable, `password-admin.json` y el archivo de credenciales correspondiente, y que usas la contraseña maestra correcta.
 - **Hay conflictos con cambios de GitHub:** la app evita sobrescribir una versión remota distinta. Cierra la app en el otro dispositivo y vuelve a conectar para descargar la versión más reciente; no hagas dos cambios simultáneos en la bóveda.
 - **No hay conexión a internet:** la bóveda persistente está en GitHub. No cierres la aplicación mientras haya cambios pendientes; cuando vuelva la conexión, pulsa **Guardar en GitHub**.
-
