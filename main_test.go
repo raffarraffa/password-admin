@@ -36,6 +36,23 @@ func TestConfiguredDatabasePathUsesEnvironment(t *testing.T) {
 	}
 }
 
+func TestConfiguredDatabasePathResolvesRelativeToExecutable(t *testing.T) {
+	t.Setenv("DB_PATH", "./data/password-admin.sqlite")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(filepath.Dir(executable), "data", "password-admin.sqlite")
+
+	got, err := configuredDatabasePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("configuredDatabasePath() = %q, want %q", got, want)
+	}
+}
+
 func TestConfiguredPortReadsDotEnvFromWorkingDirectory(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("DB_PATH", "")
@@ -68,8 +85,13 @@ func TestConfiguredPortReadsDotEnvFromWorkingDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if databasePath != "./data/password-admin.sqlite" {
-		t.Fatalf("configuredDatabasePath() = %q, want %q", databasePath, "./data/password-admin.sqlite")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDatabasePath := filepath.Join(filepath.Dir(executable), "data", "password-admin.sqlite")
+	if databasePath != wantDatabasePath {
+		t.Fatalf("configuredDatabasePath() = %q, want %q", databasePath, wantDatabasePath)
 	}
 }
 

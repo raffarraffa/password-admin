@@ -94,12 +94,15 @@ func configuredDatabasePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if databasePath != "" {
-		return databasePath, nil
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("localizar el ejecutable para la base de datos: %w", err)
+	}
+	if databasePath != "" {
+		if filepath.IsAbs(databasePath) {
+			return databasePath, nil
+		}
+		return filepath.Join(filepath.Dir(executable), databasePath), nil
 	}
 	return filepath.Join(filepath.Dir(executable), "password-admin.sqlite"), nil
 }

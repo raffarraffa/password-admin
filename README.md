@@ -15,7 +15,7 @@ PORT=45678
 DB_PATH=./data/password-admin.sqlite
 ```
 
-`DB_PATH` puede ser relativo a la carpeta de trabajo o una ruta absoluta. Si no se configura, la base se crea como `password-admin.sqlite` junto al ejecutable. La aplicación crea la carpeta de datos si no existe. Detén la aplicación antes de copiar o respaldar la base de datos.
+`DB_PATH` puede ser una ruta absoluta o relativa al directorio del ejecutable. Por ejemplo, `./data/password-admin.sqlite` guarda la base en la carpeta `data` junto al ejecutable, sin depender de desde dónde se inicia el proceso. Si no se configura, la base se crea como `password-admin.sqlite` junto al ejecutable. La aplicación crea la carpeta de datos si no existe. Detén la aplicación antes de copiar o respaldar la base de datos.
 
 Para compilar y ejecutar en Windows:
 
@@ -95,12 +95,10 @@ Copy-Item .env.example .\dist\.env
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
 ```
 
-Edita `dist\.env` si necesitas cambiar el puerto o la ruta de la base. Para que `DB_PATH=./data/...` quede junto a la configuración, inicia desde `dist`:
+Edita `dist\.env` si necesitas cambiar el puerto o la ruta de la base. `DB_PATH=./data/...` se guarda junto al ejecutable:
 
 ```powershell
-Push-Location .\dist
-.\PasswordAdmin-windows-amd64.exe
-Pop-Location
+.\dist\PasswordAdmin-windows-amd64.exe
 ```
 
 ### Compilar para Linux desde Windows
@@ -129,7 +127,7 @@ chmod 600 .env
 ./password-admin-linux-amd64
 ```
 
-La base se creará en `./data/password-admin.sqlite`, relativa a esa carpeta de trabajo. El servicio imprime la URL local para abrir en el navegador.
+La base se creará en `data/password-admin.sqlite`, junto al ejecutable. El servicio imprime la URL local para abrir en el navegador.
 
 También puedes compilar directamente en Linux:
 
@@ -198,7 +196,7 @@ No se requiere SQLite externo: el proyecto usa `modernc.org/sqlite` sin CGO.
 
 ## Solución de problemas
 
-- **La base se crea en otra carpeta:** comprueba `DB_PATH` y el `WorkingDirectory` configurado para el servicio systemd. Las rutas relativas se resuelven desde el directorio de trabajo.
+- **La base se crea en otra carpeta:** comprueba `DB_PATH`. Las rutas relativas se resuelven desde el directorio del ejecutable; las rutas absolutas se usan tal como están configuradas.
 - **No se puede crear o abrir SQLite:** comprueba los permisos de escritura del usuario del servicio en la carpeta indicada en `DB_PATH` y confirma que no haya otra instancia usando la misma base.
 - **El puerto no cambia:** reinicia el ejecutable y verifica que `PORT` esté en `.env` o en el entorno del proceso. La variable del entorno tiene prioridad y el puerto no debe estar ocupado.
 - **No se puede desbloquear la bóveda:** confirma la contraseña maestra y que se está abriendo el archivo correcto. La contraseña no se puede recuperar.
