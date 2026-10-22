@@ -25,16 +25,17 @@ func main() {
 
 	application := NewApp()
 	if err := wails.Run(&options.App{
-		Title:       "Password Admin",
-		Width:       1080,
-		Height:      720,
-		MinWidth:    760,
-		MinHeight:   560,
-		AssetServer: &assetserver.Options{Assets: assets},
-		Linux:       &linux.Options{Icon: appIcon},
-		OnStartup:   application.startup,
-		OnShutdown:  application.shutdown,
-		Bind:        []interface{}{application},
+		Title:         "Password Admin",
+		Width:         1080,
+		Height:        720,
+		MinWidth:      760,
+		MinHeight:     560,
+		AssetServer:   &assetserver.Options{Assets: assets},
+		Linux:         &linux.Options{Icon: appIcon},
+		OnStartup:     application.startup,
+		OnBeforeClose: application.beforeClose,
+		OnShutdown:    application.shutdown,
+		Bind:          []interface{}{application},
 	}); err != nil {
 		log.Fatal(err)
 	}

@@ -1,15 +1,63 @@
 # Password Admin
 
-Aplicación de escritorio hecha con Go y Wails. La lógica y la base SQLite funcionan localmente; la interfaz de la ventana está hecha con HTML, CSS y JavaScript, sin un servidor web externo.
+Aplicación de escritorio hecha con Go y Wails. La bóveda persistente se guarda cifrada en un repositorio privado de GitHub; SQLite funciona únicamente en memoria mientras la aplicación está abierta. La interfaz está hecha con HTML, CSS y JavaScript, sin un servidor web externo.
+
+## Configurar GitHub por primera vez
+
+### 1. Crear el repositorio privado
+
+En GitHub, crea un repositorio **Private**. Puede estar vacío; no hace falta inicializarlo con README, licencia ni `.gitignore`.
+
+Por ejemplo, para `https://github.com/juanperez/password-vault`, los campos de Password Admin son:
+
+| Campo en la aplicación | Valor |
+| --- | --- |
+| Propietario del repositorio | `juanperez` |
+| Nombre del repositorio | `password-vault` |
+
+Usa solamente el usuario o la organización en el primer campo, y el nombre del repositorio en el segundo. **No pegues la URL completa ni agregues `.git`.**
+
+### 2. Crear un token fine-grained
+
+En GitHub, abre **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token** y configura:
+
+1. **Resource owner:** el usuario o la organización dueña del repositorio.
+2. **Repository access:** selecciona **Only select repositories** y elige el repositorio privado creado arriba.
+3. **Repository permissions → Contents:** **Read and write**. No se necesitan permisos de Issues, Actions ni administración del repositorio.
+4. Define una fecha de expiración que puedas mantener. Cuando el token expire, genera otro y vuelve a conectar el repositorio.
+
+Copia el token al generarlo: GitHub no vuelve a mostrarlo. No lo pongas en el código, en el README, en un comando de terminal ni en el repositorio.
+
+### 3. Conectar Password Admin
+
+1. Inicia Password Admin y completa **Propietario**, **Repositorio** y **Token fine-grained**.
+2. Si es un repositorio nuevo, crea una contraseña maestra de al menos 8 caracteres. Si ya contiene la bóveda, escribe la contraseña maestra existente para desbloquearla.
+3. Para migrar una bóveda SQLite anterior, conecta primero un repositorio vacío. En la pantalla de creación, escribe la contraseña maestra de la bóveda anterior y pulsa **Importar bóveda SQLite existente**. Selecciona el archivo original. La aplicación lo abre en solo lectura, sube una copia cifrada y conserva el original.
+
+La aplicación crea `password-admin.vault` en el repositorio. Ese archivo contiene la bóveda cifrada; no lo edites manualmente.
+
+## Llevar la configuración a otro dispositivo
+
+El token no se guarda en el repositorio ni en texto plano. Tras crear o desbloquear la bóveda, Password Admin lo cifra con la contraseña maestra y guarda los siguientes archivos junto al ejecutable:
+
+- `password-admin.json`: propietario y nombre del repositorio.
+- `password-admin.credentials-*`: token cifrado. El sufijo identifica el repositorio configurado.
+
+Copia esos archivos junto con el ejecutable al otro dispositivo y abre la aplicación. Usa la misma contraseña maestra. Mantén privados los archivos: quien obtenga el archivo de credenciales **y** la contraseña maestra podrá usar el token. Si no tienes los archivos, puedes conectar de nuevo el repositorio pegando un token válido.
+
+La carpeta del ejecutable debe permitir escritura. Si Windows o Linux impide escribir allí, mueve la aplicación a una carpeta del usuario o con permisos de escritura. En desarrollo, los archivos se guardan junto al ejecutable que inicia Wails; normalmente queda en `build/bin`. Comprueba esa carpeta al mover una configuración de desarrollo.
+
+Si la aplicación solicita de nuevo el token en otro equipo, verifica que copiaste tanto `password-admin.json` como el archivo `password-admin.credentials-*` que corresponde a ese repositorio. No renombres el archivo de credenciales.
 
 ## Seguridad
 
-- No envía contraseñas a servicios en línea. La interfaz tampoco descarga fuentes, scripts ni otros recursos remotos.
-- Los nombres de usuario y las contraseñas se cifran localmente con AES-256-GCM. La clave se deriva de la contraseña maestra con PBKDF2-HMAC-SHA-256 y una sal aleatoria.
+- La aplicación envía a GitHub una copia cifrada de todo el contenido de la bóveda. SQLite solo funciona en RAM durante la sesión. También cifra usuarios y contraseñas por campo con AES-256-GCM.
+- La clave se deriva de la contraseña maestra mediante PBKDF2-HMAC-SHA-256 y una sal aleatoria. Sin la contraseña maestra no se puede descifrar la copia remota.
+- El token fine-grained se cifra con la contraseña maestra y se guarda en un archivo `password-admin.credentials-*`, junto al ejecutable. La configuración del repositorio se guarda en `password-admin.json` en esa misma carpeta.
+- La base de trabajo solo existe en RAM. Internet es necesario para descargar y sincronizar la bóveda. Si falla una sincronización, la aplicación avisa y evita cerrarse mientras haya cambios pendientes; un cierre forzado o apagón puede perder los cambios que no llegaron a GitHub.
 - La contraseña maestra no se puede recuperar. Guárdala en un lugar seguro.
-- Los nombres de cuenta, nombres de sitio y URL no se cifran.
 - El CSV de Chrome exportado contiene contraseñas en texto claro. Guárdalo con cuidado y elimínalo después de importarlo en Chrome.
-- Respalda `vault.sqlite` con la aplicación cerrada y conserva el respaldo de forma segura.
+- GitHub mantiene el historial del archivo. Protege el repositorio privado, limita el alcance del token y revócalo si deja de ser necesario.
 
 ## Requisitos de desarrollo
 
@@ -34,15 +82,22 @@ El proyecto ya incluye `wails.json` y configura el servidor de desarrollo en el 
 wails dev
 ```
 
-La primera vez, crea una contraseña maestra de al menos 12 caracteres. En modo desarrollo (`wails dev`), la bóveda se guarda como `vault.sqlite` en la raíz del proyecto. En la aplicación compilada, se guarda en la misma carpeta que el ejecutable.
+Configura el repositorio y el token siguiendo [Configurar GitHub por primera vez](#configurar-github-por-primera-vez). Después crea una contraseña maestra o desbloquea la bóveda existente. Para migrar una instalación anterior, usa **Importar bóveda SQLite existente**, selecciona el archivo `vault.sqlite` y escribe su contraseña maestra. El original local se conserva; solo se sube una copia cifrada.
 
-Si ya habías usado `wails dev` antes de este cambio, la aplicación mueve automáticamente `build/bin/vault.sqlite` a la raíz del proyecto cuando inicia, siempre que todavía no exista una bóveda allí.
+La bóveda remota se descarga al iniciar y cada cambio se cifra y sincroniza con GitHub. Si una sincronización falla, no cierres la aplicación: restablece la conexión y pulsa **Guardar en GitHub**. La app detecta cambios remotos mediante el SHA de GitHub y evita sobrescribir una versión distinta. Está pensada para usarla en un dispositivo a la vez.
 
 Si PowerShell no encuentra `wails` después de instalar el CLI, agrégalo al `PATH` de esa terminal y vuelve a ejecutar:
 
 ```powershell
 $env:Path += ";$(go env GOPATH)\bin"
 wails dev
+```
+
+No copies `password-admin.json` ni `password-admin.credentials-*` al control de versiones. En una carpeta de desarrollo, puedes ignorar esos archivos localmente con `.git/info/exclude` para no modificar las reglas compartidas del proyecto:
+
+```text
+/build/bin/password-admin.json
+/build/bin/password-admin.credentials-*
 ```
 
 ## Uso
@@ -87,11 +142,14 @@ Instala antes GCC y las dependencias GTK3/WebKit2GTK de Wails.
 
 Wails usa el WebView nativo de cada plataforma y sus dependencias de compilación; por eso, lo más sencillo y fiable es compilar por separado en cada sistema operativo de destino. El frontend está escrito directamente en HTML, CSS y JavaScript: no requiere Node.js ni un paso de compilación de frontend.
 
-## Uso portátil desde un pendrive
+## Solución de problemas
 
-En Windows, copia `Password Admin.exe` al pendrive y ejecútalo desde allí. La primera ejecución crea `vault.sqlite` junto al `.exe`. Para mover la bóveda a otro equipo, cierra la aplicación y lleva juntos el ejecutable y `vault.sqlite`; conserva también una copia de seguridad de ambos archivos en un lugar seguro.
-
-La carpeta debe permitir escritura. Si el pendrive está protegido contra escritura o el ejecutable se encuentra en una carpeta sin permisos de escritura, la aplicación no podrá abrir o crear la bóveda. La bóveda cifra los usuarios y las contraseñas, pero el archivo SQLite sigue conteniendo nombres de cuentas y sitios. Usa la contraseña maestra y expulsa el pendrive de forma segura.
+- **GitHub devuelve 404 al conectar:** confirma que propietario y repositorio están escritos como nombres, no como URL; revisa que el token tenga acceso al repositorio privado elegido.
+- **GitHub devuelve 401 o 403:** comprueba que el token no expiró y que tiene permiso **Contents: Read and write**.
+- **No se puede guardar el token o la configuración:** habilita escritura en la carpeta del ejecutable o mueve la app a una carpeta del usuario. Para `wails dev`, revisa la carpeta del ejecutable de desarrollo, normalmente `build/bin`.
+- **No se puede desbloquear en el segundo dispositivo:** verifica que copiaste juntos el ejecutable, `password-admin.json` y el archivo de credenciales correspondiente, y que usas la contraseña maestra correcta.
+- **Hay conflictos con cambios de GitHub:** la app evita sobrescribir una versión remota distinta. Cierra la app en el otro dispositivo y vuelve a conectar para descargar la versión más reciente; no hagas dos cambios simultáneos en la bóveda.
+- **No hay conexión a internet:** la bóveda persistente está en GitHub. No cierres la aplicación mientras haya cambios pendientes; cuando vuelva la conexión, pulsa **Guardar en GitHub**.
 
 ## Icono
 

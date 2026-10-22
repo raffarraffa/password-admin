@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -38,11 +40,41 @@ type Store struct {
 	key []byte
 }
 
+type databaseSnapshot struct {
+	Version   int                `json:"version"`
+	Metadata  []snapshotMetadata `json:"metadata"`
+	Accounts  []snapshotAccount  `json:"accounts"`
+	Passwords []snapshotPassword `json:"passwords"`
+}
+
+type snapshotMetadata struct {
+	Key   string `json:"key"`
+	Value []byte `json:"value"`
+}
+
+type snapshotAccount struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type snapshotPassword struct {
+	ID        int64  `json:"id"`
+	AccountID int64  `json:"accountId"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Username  []byte `json:"username"`
+	Password  []byte `json:"password"`
+}
+
 func openStore(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, fmt.Errorf("crear carpeta de datos: %w", err)
 	}
 	dsn := path + "?_pragma=foreign_keys%3d1&_pragma=busy_timeout%3d5000&_pragma=secure_delete%3d1"
+	return openStoreDSN(dsn)
+}
+
+func openStoreDSN(dsn string) (*Store, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("abrir SQLite: %w", err)
@@ -52,7 +84,60 @@ func openStore(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("conectar con SQLite: %w", err)
 	}
-	if _, err := db.Exec(`
+	if err := configureStore(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &Store{db: db}, nil
+}
+
+func openMemoryStore() (*Store, error) {
+	return openMemoryStoreWithSchema(true)
+}
+
+func openUninitializedMemoryStore() (*Store, error) {
+	return openMemoryStoreWithSchema(false)
+}
+
+func openReadOnlyStore(path string) (*Store, error) {
+	dsn := "file:" + filepath.ToSlash(path) + "?mode=ro"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("abrir bóveda SQLite seleccionada: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("leer bóveda SQLite seleccionada: %w", err)
+	}
+	return &Store{db: db}, nil
+}
+
+func openMemoryStoreWithSchema(initializeSchema bool) (*Store, error) {
+	db, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		return nil, fmt.Errorf("abrir SQLite: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("conectar con SQLite: %w", err)
+	}
+	if initializeSchema {
+		if err := configureStore(db); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	return &Store{db: db}, nil
+}
+
+type sqlExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func configureStore(db sqlExecer) error {
+	if _, err := db.ExecContext(context.Background(), `
 		CREATE TABLE IF NOT EXISTS metadata (
 			key TEXT PRIMARY KEY,
 			value BLOB NOT NULL
@@ -70,10 +155,141 @@ func openStore(path string) (*Store, error) {
 			password BLOB NOT NULL
 		);
 	`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("crear tablas SQLite: %w", err)
+		return fmt.Errorf("crear tablas SQLite: %w", err)
 	}
-	return &Store{db: db}, nil
+	if _, err := db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON`); err != nil {
+		return fmt.Errorf("configurar SQLite: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) serialize() ([]byte, error) {
+	snapshot := databaseSnapshot{Version: 1}
+	metadataRows, err := s.db.Query(`SELECT key, value FROM metadata ORDER BY key`)
+	if err != nil {
+		return nil, fmt.Errorf("leer configuración de la bóveda: %w", err)
+	}
+	for metadataRows.Next() {
+		var item snapshotMetadata
+		if err := metadataRows.Scan(&item.Key, &item.Value); err != nil {
+			metadataRows.Close()
+			return nil, fmt.Errorf("leer configuración de la bóveda: %w", err)
+		}
+		snapshot.Metadata = append(snapshot.Metadata, item)
+	}
+	if err := metadataRows.Err(); err != nil {
+		metadataRows.Close()
+		return nil, fmt.Errorf("recorrer configuración de la bóveda: %w", err)
+	}
+	if err := metadataRows.Close(); err != nil {
+		return nil, fmt.Errorf("cerrar lectura de configuración: %w", err)
+	}
+
+	accountRows, err := s.db.Query(`SELECT id, name FROM accounts ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("leer cuentas de la bóveda: %w", err)
+	}
+	for accountRows.Next() {
+		var item snapshotAccount
+		if err := accountRows.Scan(&item.ID, &item.Name); err != nil {
+			accountRows.Close()
+			return nil, fmt.Errorf("leer cuenta de la bóveda: %w", err)
+		}
+		snapshot.Accounts = append(snapshot.Accounts, item)
+	}
+	if err := accountRows.Err(); err != nil {
+		accountRows.Close()
+		return nil, fmt.Errorf("recorrer cuentas de la bóveda: %w", err)
+	}
+	if err := accountRows.Close(); err != nil {
+		return nil, fmt.Errorf("cerrar lectura de cuentas: %w", err)
+	}
+
+	passwordRows, err := s.db.Query(`SELECT id, account_id, name, url, username, password FROM passwords ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("leer contraseñas de la bóveda: %w", err)
+	}
+	for passwordRows.Next() {
+		var item snapshotPassword
+		if err := passwordRows.Scan(&item.ID, &item.AccountID, &item.Name, &item.URL, &item.Username, &item.Password); err != nil {
+			passwordRows.Close()
+			return nil, fmt.Errorf("leer contraseña de la bóveda: %w", err)
+		}
+		snapshot.Passwords = append(snapshot.Passwords, item)
+	}
+	if err := passwordRows.Err(); err != nil {
+		passwordRows.Close()
+		return nil, fmt.Errorf("recorrer contraseñas de la bóveda: %w", err)
+	}
+	if err := passwordRows.Close(); err != nil {
+		return nil, fmt.Errorf("cerrar lectura de contraseñas: %w", err)
+	}
+
+	serialized, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("serializar contenido de la bóveda: %w", err)
+	}
+	return serialized, nil
+}
+
+func (s *Store) deserialize(data []byte) error {
+	var snapshot databaseSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return fmt.Errorf("interpretar respaldo cifrado de la bóveda: %w", err)
+	}
+	if snapshot.Version != 1 {
+		return fmt.Errorf("versión de respaldo de bóveda no compatible: %d", snapshot.Version)
+	}
+	if err := configureStore(s.db); err != nil {
+		return fmt.Errorf("preparar SQLite en memoria: %w", err)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("iniciar restauración de la bóveda: %w", err)
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		`DELETE FROM passwords`,
+		`DELETE FROM accounts`,
+		`DELETE FROM metadata`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return fmt.Errorf("vaciar SQLite en memoria: %w", err)
+		}
+	}
+	for _, item := range snapshot.Metadata {
+		if _, err := tx.Exec(`INSERT INTO metadata(key, value) VALUES (?, ?)`, item.Key, item.Value); err != nil {
+			return fmt.Errorf("restaurar configuración de la bóveda: %w", err)
+		}
+	}
+	for _, item := range snapshot.Accounts {
+		if _, err := tx.Exec(`INSERT INTO accounts(id, name) VALUES (?, ?)`, item.ID, item.Name); err != nil {
+			return fmt.Errorf("restaurar cuenta: %w", err)
+		}
+	}
+	for _, item := range snapshot.Passwords {
+		if _, err := tx.Exec(
+			`INSERT INTO passwords(id, account_id, name, url, username, password) VALUES (?, ?, ?, ?, ?, ?)`,
+			item.ID, item.AccountID, item.Name, item.URL, item.Username, item.Password,
+		); err != nil {
+			return fmt.Errorf("restaurar contraseña: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("confirmar restauración de la bóveda: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) vaultSalt() ([]byte, error) {
+	var salt []byte
+	if err := s.db.QueryRow(`SELECT value FROM metadata WHERE key = 'salt'`).Scan(&salt); err != nil {
+		return nil, fmt.Errorf("leer sal de la bóveda: %w", err)
+	}
+	if len(salt) != saltSize {
+		return nil, errors.New("la sal de la bóveda tiene un formato inválido")
+	}
+	return salt, nil
 }
 
 func (s *Store) close() error {

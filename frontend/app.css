@@ -101,6 +101,12 @@ strong {
   display: grid;
   gap: 10px;
 }
+.field-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 label {
   color: #4b524a;
   font-size: 14px;
@@ -269,6 +275,13 @@ select:focus {
   padding: 12px 8px;
   color: #737c72;
   font-size: 11px;
+}
+.sidebar-actions {
+  display: grid;
+  gap: 7px;
+}
+.sidebar-actions .button {
+  width: 100%;
 }
 .status-dot {
   width: 7px;
