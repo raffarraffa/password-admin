@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type VaultStatus struct {
@@ -38,29 +36,10 @@ type App struct {
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{ctx: context.Background()}
 }
 
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-}
-
-func (a *App) beforeClose(ctx context.Context) bool {
-	a.mu.Lock()
-	if !a.dirty {
-		a.mu.Unlock()
-		return false
-	}
-	err := a.syncLocked()
-	a.mu.Unlock()
-	if err == nil {
-		return false
-	}
-	runtime.EventsEmit(ctx, "vault-sync-error", err.Error())
-	return true
-}
-
-func (a *App) shutdown(context.Context) {
+func (a *App) shutdown() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.dirty {
@@ -286,7 +265,7 @@ func (a *App) UnlockVault(password string) error {
 	return nil
 }
 
-func (a *App) ImportLocalVault(password string) error {
+func (a *App) ImportLocalVault(password string, data []byte) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.requireRemoteReadyLocked(); err != nil {
@@ -295,17 +274,22 @@ func (a *App) ImportLocalVault(password string) error {
 	if a.remoteExists {
 		return errors.New("ya existe una bóveda en GitHub; importar otra la sobrescribiría")
 	}
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Selecciona la base SQLite existente",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Base SQLite", Pattern: "*.sqlite;*.db"},
-		},
-	})
+	temp, err := os.CreateTemp("", "password-admin-import-*.sqlite")
 	if err != nil {
-		return fmt.Errorf("elegir la base SQLite: %w", err)
+		return fmt.Errorf("crear archivo temporal para importar la base SQLite: %w", err)
 	}
-	if path == "" {
-		return nil
+	path := temp.Name()
+	defer os.Remove(path)
+	if err := temp.Chmod(0600); err != nil {
+		temp.Close()
+		return fmt.Errorf("proteger archivo temporal de importación: %w", err)
+	}
+	if _, err := temp.Write(data); err != nil {
+		temp.Close()
+		return fmt.Errorf("escribir base SQLite temporal: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("cerrar base SQLite temporal: %w", err)
 	}
 	localStore, err := openReadOnlyStore(path)
 	if err != nil {
@@ -425,53 +409,34 @@ func (a *App) ImportCSV(content string, accountID int64, newAccountName string) 
 	return ImportResult{AccountName: account.Name, Count: len(entries)}, nil
 }
 
-func (a *App) ExportCSV(accountID int64) (bool, error) {
+func (a *App) ExportCSV(accountID int64) ([]byte, error) {
 	a.mu.Lock()
 	if err := a.requireUnlockedLocked(); err != nil {
 		a.mu.Unlock()
-		return false, err
+		return nil, err
 	}
-	accountName := "todas las cuentas"
 	if accountID != 0 {
-		account, err := a.store.accountByID(accountID)
-		if err != nil {
+		if _, err := a.store.accountByID(accountID); err != nil {
 			a.mu.Unlock()
-			return false, err
+			return nil, err
 		}
-		accountName = account.Name
 	}
 	entries, err := a.store.passwords(accountID)
 	a.mu.Unlock()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if len(entries) == 0 {
 		if accountID == 0 {
-			return false, errors.New("no hay contraseñas para exportar")
+			return nil, errors.New("no hay contraseñas para exportar")
 		}
-		return false, errors.New("la cuenta seleccionada no tiene contraseñas para exportar")
+		return nil, errors.New("la cuenta seleccionada no tiene contraseñas para exportar")
 	}
 	var output bytes.Buffer
 	if err := writeChromeCSV(&output, entries); err != nil {
-		return false, err
+		return nil, err
 	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		DefaultFilename: "chrome-passwords.csv",
-		Title:           "Exportar contraseñas de " + accountName,
-		Filters: []runtime.FileFilter{
-			{DisplayName: "CSV", Pattern: "*.csv"},
-		},
-	})
-	if err != nil {
-		return false, fmt.Errorf("elegir dónde guardar el CSV: %w", err)
-	}
-	if path == "" {
-		return false, nil
-	}
-	if err := os.WriteFile(path, output.Bytes(), 0600); err != nil {
-		return false, fmt.Errorf("guardar CSV: %w", err)
-	}
-	return true, nil
+	return output.Bytes(), nil
 }
 
 func (a *App) DeletePassword(id int64) error {
