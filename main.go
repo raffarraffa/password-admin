@@ -32,7 +32,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	application := NewApp()
+	databasePath, err := configuredDatabasePath()
+	if err != nil {
+		log.Fatal(err)
+	}
+	application, err := NewApp(databasePath)
+	if err != nil {
+		log.Fatalf("abrir base de datos local %q: %v", databasePath, err)
+	}
 	addr := net.JoinHostPort("127.0.0.1", port)
 	server := &http.Server{
 		Addr:              addr,
@@ -68,32 +75,9 @@ func main() {
 }
 
 func configuredPort() (string, error) {
-	port := os.Getenv("PORT")
-	if port == "" {
-		executable, err := os.Executable()
-		if err != nil {
-			return "", fmt.Errorf("localizar el ejecutable para leer .env: %w", err)
-		}
-		workingDirectory, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("localizar la carpeta actual para leer .env: %w", err)
-		}
-		paths := []string{
-			filepath.Join(workingDirectory, ".env"),
-			filepath.Join(filepath.Dir(executable), ".env"),
-		}
-		for _, path := range paths {
-			data, err := os.ReadFile(path)
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			if err != nil {
-				return "", fmt.Errorf("leer %s: %w", path, err)
-			}
-			if port = parsePortFromEnv(data); port != "" {
-				break
-			}
-		}
+	port, err := configuredValue("PORT")
+	if err != nil {
+		return "", err
 	}
 	if port == "" {
 		port = defaultPort
@@ -105,7 +89,57 @@ func configuredPort() (string, error) {
 	return strconv.Itoa(number), nil
 }
 
+func configuredDatabasePath() (string, error) {
+	databasePath, err := configuredValue("DB_PATH")
+	if err != nil {
+		return "", err
+	}
+	if databasePath != "" {
+		return databasePath, nil
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("localizar el ejecutable para la base de datos: %w", err)
+	}
+	return filepath.Join(filepath.Dir(executable), "password-admin.sqlite"), nil
+}
+
+func configuredValue(key string) (string, error) {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value, nil
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("localizar el ejecutable para leer .env: %w", err)
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("localizar la carpeta actual para leer .env: %w", err)
+	}
+	paths := []string{
+		filepath.Join(workingDirectory, ".env"),
+		filepath.Join(filepath.Dir(executable), ".env"),
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("leer %s: %w", path, err)
+		}
+		if value := parseEnvValue(data, key); value != "" {
+			return value, nil
+		}
+	}
+	return "", nil
+}
+
 func parsePortFromEnv(data []byte) string {
+	return parseEnvValue(data, "PORT")
+}
+
+func parseEnvValue(data []byte, key string) string {
 	var port string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -113,8 +147,8 @@ func parsePortFromEnv(data []byte) string {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		key, value, found := strings.Cut(line, "=")
-		if found && strings.TrimSpace(key) == "PORT" {
+		name, value, found := strings.Cut(line, "=")
+		if found && strings.TrimSpace(name) == key {
 			port = strings.Trim(strings.TrimSpace(value), `"'`)
 		}
 	}

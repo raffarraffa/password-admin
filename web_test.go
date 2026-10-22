@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,7 +14,12 @@ func TestWebHandlerServesFrontend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := newWebHandler(NewApp(), http.FS(assets))
+	app, err := NewApp(filepath.Join(t.TempDir(), "vault.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.shutdown()
+	handler := newWebHandler(app, http.FS(assets))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
 
@@ -31,14 +37,18 @@ func TestWebHandlerServesFrontend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(backend), "fetch(`./api/") ||
-		!strings.Contains(string(backend), `fetch("./api/import-local-vault"`) {
+	if !strings.Contains(string(backend), "fetch(`./api/") {
 		t.Fatal("frontend API requests must use paths relative to the application URL")
 	}
 }
 
 func TestWebHandlerRejectsCrossOriginAPIRequests(t *testing.T) {
-	handler := newWebHandler(NewApp(), http.FS(frontend))
+	app, err := NewApp(filepath.Join(t.TempDir(), "vault.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.shutdown()
+	handler := newWebHandler(app, http.FS(frontend))
 	request := httptest.NewRequest(http.MethodPost, "/api/vault-status", strings.NewReader("{}"))
 	request.Host = "localhost:45678"
 	request.Header.Set("Origin", "https://attacker.example")

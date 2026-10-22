@@ -1,24 +1,19 @@
 import {
   Accounts,
-  ConfigureGitHub,
   CreateAccount,
   DeletePassword,
   ExportCSV,
   ImportCSV,
-  ImportLocalVault,
   PasswordDetails,
   Passwords,
   PreviewCSV,
   SetupVault,
-  SyncVault,
   UnlockVault,
   VaultStatus,
 } from "./backend.js";
 
 const $ = (selector) => document.querySelector(selector);
 const gate = $("#gate");
-const githubGate = $("#github-gate");
-const githubForm = $("#github-form");
 const vault = $("#vault");
 const gateForm = $("#gate-form");
 const modal = $("#modal");
@@ -32,8 +27,6 @@ let selectedEntryID = 0;
 let selectedEntry = null;
 let importContent = "";
 let toastTimer;
-let returnToVault = false;
-let githubConfig = {};
 
 function notify(message, isError = false) {
   toast.textContent = message;
@@ -48,7 +41,6 @@ function reportError(error) {
 }
 
 function showGate(initialized) {
-  githubGate.classList.add("hidden");
   gate.classList.remove("hidden");
   vault.classList.add("hidden");
   $("#gate-title").textContent = initialized ? "Bienvenido de nuevo" : "Crea tu bóveda";
@@ -59,60 +51,15 @@ function showGate(initialized) {
   $("#master-password").autocomplete = initialized ? "current-password" : "new-password";
   $("#gate-submit").textContent = initialized ? "Desbloquear bóveda" : "Crear bóveda";
   gateForm.dataset.initialized = String(initialized);
-  $("#import-existing").classList.toggle("hidden", initialized);
   $("#master-password").focus();
 }
 
-function showGitHubSetup(config = {}, allowCancel = false) {
-  gate.classList.add("hidden");
-  vault.classList.add("hidden");
-  githubGate.classList.remove("hidden");
-  $("#github-owner").value = config.owner || "";
-  $("#github-repo").value = config.repo || "";
-  $("#github-token").value = "";
-  $("#github-cancel").classList.toggle("hidden", !allowCancel);
-  $("#github-owner").focus();
-}
-
 async function showVault() {
-  githubGate.classList.add("hidden");
   gate.classList.add("hidden");
   vault.classList.remove("hidden");
-  $("#sync-status").textContent = "Bóveda cifrada en GitHub";
+  $("#sync-status").textContent = "Bóveda desbloqueada";
   await refreshAccounts();
 }
-
-githubForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const submit = githubForm.querySelector('button[type="submit"]');
-  submit.disabled = true;
-  try {
-    const status = await ConfigureGitHub(
-      $("#github-owner").value,
-      $("#github-repo").value,
-      $("#github-token").value,
-    );
-    githubConfig = status.config || {};
-    githubForm.reset();
-    returnToVault = false;
-    showGate(status.initialized);
-    notify("Repositorio privado conectado.");
-  } catch (error) {
-    reportError(error);
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-$("#github-cancel").addEventListener("click", async () => {
-  if (!returnToVault) return;
-  returnToVault = false;
-  try {
-    await showVault();
-  } catch (error) {
-    reportError(error);
-  }
-});
 
 gateForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -133,76 +80,8 @@ gateForm.addEventListener("submit", async (event) => {
     gateForm.reset();
     await showVault();
   } catch (error) {
-    try {
-      const status = await VaultStatus();
-      githubConfig = status.config || githubConfig;
-      if (status.unlocked) {
-        gateForm.reset();
-        await showVault();
-      }
-    } catch (statusError) {
-      reportError(statusError);
-      return;
-    }
     reportError(error);
   }
-});
-
-$("#import-existing").addEventListener("click", async () => {
-  const password = $("#master-password").value;
-  if (!password) {
-    notify("Ingresa la contraseña maestra de la bóveda SQLite que vas a importar.", true);
-    $("#master-password").focus();
-    return;
-  }
-  $("#sqlite-file").value = "";
-  $("#sqlite-file").click();
-});
-
-$("#sqlite-file").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  try {
-    await ImportLocalVault($("#master-password").value, file);
-    const status = await VaultStatus();
-    githubConfig = status.config || githubConfig;
-    if (!status.unlocked) {
-      notify("No se importó ninguna bóveda.", true);
-      return;
-    }
-    gateForm.reset();
-    await showVault();
-    notify("Bóveda local importada y guardada en GitHub.");
-  } catch (error) {
-    try {
-      const status = await VaultStatus();
-      githubConfig = status.config || githubConfig;
-      if (status.unlocked) {
-        gateForm.reset();
-        await showVault();
-      }
-    } catch (statusError) {
-      reportError(statusError);
-      return;
-    }
-    reportError(error);
-  }
-});
-
-$("#sync-button").addEventListener("click", async () => {
-  try {
-    await SyncVault();
-    $("#sync-status").textContent = "Guardado en GitHub";
-    notify("Bóveda guardada en GitHub.");
-  } catch (error) {
-    $("#sync-status").textContent = "Error al guardar";
-    reportError(error);
-  }
-});
-
-$("#github-settings").addEventListener("click", () => {
-  returnToVault = true;
-  showGitHubSetup(githubConfig, true);
 });
 
 async function refreshAccounts(preferredAccountName = "") {
@@ -553,15 +432,12 @@ $("#export-button").addEventListener("click", async () => {
 
 try {
   const status = await VaultStatus();
-  githubConfig = status.config || {};
   if (status.unlocked) {
     await showVault();
-  } else if (!status.configured || !status.hasToken) {
-    showGitHubSetup(status.config);
   } else {
     showGate(status.initialized);
   }
 } catch (error) {
-  showGitHubSetup();
+  showGate(false);
   reportError(error);
 }

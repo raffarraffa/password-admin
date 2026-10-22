@@ -15,24 +15,8 @@ async function request(endpoint, body = {}) {
 }
 
 export const VaultStatus = () => request("vault-status");
-export const ConfigureGitHub = (owner, repo, token) =>
-  request("configure-github", { owner, repo, token });
 export const SetupVault = (password) => request("setup-vault", { password });
 export const UnlockVault = (password) => request("unlock-vault", { password });
-export async function ImportLocalVault(password, file) {
-  const body = new FormData();
-  body.append("password", password);
-  body.append("vault", file, file.name);
-  const response = await fetch("./api/import-local-vault", {
-    method: "POST",
-    body,
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const result = await response.json().catch(() => null);
-    throw new Error(result?.error || `Error del servidor (HTTP ${response.status}).`);
-  }
-}
 export const Accounts = () => request("accounts");
 export const CreateAccount = (name) => request("create-account", { name });
 export const Passwords = (accountID) => request("passwords", { accountID });
@@ -51,4 +35,3 @@ export async function ExportCSV(accountID) {
   return true;
 }
 export const DeletePassword = (entryID) => request("delete-password", { entryID });
-export const SyncVault = () => request("sync-vault");

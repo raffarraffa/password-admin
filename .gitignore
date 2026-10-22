@@ -28,9 +28,10 @@ go.work.sum
 # env file
 .env
 
-# Local GitHub settings and encrypted credentials
-password-admin.json
-password-admin.credentials-*
+# Local vault database
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Editor/IDE
 # .idea/

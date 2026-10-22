@@ -13,7 +13,6 @@ import (
 
 const (
 	maxJSONRequestSize = 16 << 20
-	maxVaultUploadSize = 64 << 20
 )
 
 type webHandler struct {
@@ -56,10 +55,6 @@ func (h *webHandler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	switch strings.TrimPrefix(r.URL.Path, "/api/") {
 	case "vault-status":
 		h.handleJSON(w, r, func() (any, error) { return h.app.VaultStatus() })
-	case "configure-github":
-		h.handleJSON(w, r, func(body apiRequest) (any, error) {
-			return h.app.ConfigureGitHub(body.Owner, body.Repo, body.Token)
-		})
 	case "setup-vault":
 		h.handleJSON(w, r, func(body apiRequest) (any, error) {
 			return nil, h.app.SetupVault(body.Password)
@@ -96,21 +91,12 @@ func (h *webHandler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		h.handleJSON(w, r, func(body apiRequest) (any, error) {
 			return nil, h.app.DeletePassword(body.EntryID)
 		})
-	case "sync-vault":
-		h.handleJSON(w, r, func() (any, error) {
-			return nil, h.app.SyncVault()
-		})
-	case "import-local-vault":
-		h.importLocalVault(w, r)
 	default:
 		http.NotFound(w, r)
 	}
 }
 
 type apiRequest struct {
-	Owner          string `json:"owner"`
-	Repo           string `json:"repo"`
-	Token          string `json:"token"`
 	Password       string `json:"password"`
 	Name           string `json:"name"`
 	AccountID      int64  `json:"accountID"`
@@ -155,36 +141,6 @@ func (h *webHandler) handleJSON(w http.ResponseWriter, r *http.Request, operatio
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		return
 	}
-}
-
-func (h *webHandler) importLocalVault(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxVaultUploadSize)
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		writeAPIError(w, http.StatusBadRequest, fmt.Errorf("formulario de importación inválido: %w", err))
-		return
-	}
-	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
-	}
-	password := r.FormValue("password")
-	file, _, err := r.FormFile("vault")
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, fmt.Errorf("falta seleccionar el archivo SQLite: %w", err))
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(file)
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, fmt.Errorf("leer archivo SQLite: %w", err))
-		return
-	}
-	defer clear(data)
-	if err := h.app.ImportLocalVault(password, data); err != nil {
-		writeAPIError(w, http.StatusUnprocessableEntity, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = io.WriteString(w, "null\n")
 }
 
 func (h *webHandler) exportCSV(w http.ResponseWriter, r *http.Request) {
