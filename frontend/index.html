@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Password Admin</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <main id="gate" class="gate">
+      <section class="gate-card">
+        <div class="brand-mark" aria-hidden="true">P</div>
+        <p class="eyebrow">BÓVEDA LOCAL</p>
+        <h1 id="gate-title">Password Admin</h1>
+        <p id="gate-description" class="muted"></p>
+        <form id="gate-form" class="stack">
+          <label for="master-password">Contraseña maestra</label>
+          <input id="master-password" type="password" autocomplete="current-password" required>
+          <div id="confirm-wrap" class="stack hidden">
+            <label for="confirm-password">Confirmar contraseña</label>
+            <input id="confirm-password" type="password" autocomplete="new-password">
+          </div>
+          <button id="gate-submit" class="button primary" type="submit">Desbloquear</button>
+        </form>
+        <p class="security-note">Tus credenciales se cifran y permanecen en este dispositivo.</p>
+      </section>
+    </main>
+
+    <main id="vault" class="layout hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark small" aria-hidden="true">P</div>
+          <div><strong>Password Admin</strong><span>Bóveda local</span></div>
+        </div>
+        <div class="section-heading">
+          <span>CUENTAS</span>
+          <button id="add-account" class="icon-button" type="button" aria-label="Crear cuenta" title="Crear cuenta">+</button>
+        </div>
+        <nav id="account-list" class="account-list" aria-label="Cuentas"></nav>
+        <div class="sidebar-foot"><span class="status-dot"></span> Cifrado activo</div>
+      </aside>
+
+      <section class="workspace">
+        <header class="toolbar">
+          <div class="heading">
+            <p class="eyebrow">TUS CREDENCIALES</p>
+            <h1 id="account-title">Selecciona una cuenta</h1>
+          </div>
+          <div class="toolbar-actions">
+            <button id="import-button" class="button secondary" type="button">Importar CSV</button>
+            <button id="export-button" class="button primary" type="button">Exportar para Chrome</button>
+            <input id="csv-file" class="hidden" type="file" accept=".csv,text/csv">
+          </div>
+        </header>
+        <div class="search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="search" type="search" placeholder="Buscar por sitio o usuario" autocomplete="off">
+          <span id="entry-count" class="count"></span>
+        </div>
+        <div class="content-grid">
+          <section class="entries-panel">
+            <div class="panel-heading"><span>SITIO</span><span>USUARIO</span></div>
+            <div id="entries" class="entries-list"></div>
+            <div id="empty-state" class="empty-state hidden">
+              <div class="empty-icon" aria-hidden="true">⌑</div>
+              <h2 id="empty-title">Tu bóveda empieza aquí</h2>
+              <p id="empty-description">Importa un CSV de Chrome para guardar las contraseñas en una cuenta.</p>
+              <button id="empty-import" class="button secondary" type="button">Importar CSV</button>
+            </div>
+          </section>
+          <section id="details" class="details-panel">
+            <div class="detail-placeholder">
+              <div class="empty-icon" aria-hidden="true">◇</div>
+              <p>Selecciona una contraseña para ver sus detalles.</p>
+            </div>
+          </section>
+        </div>
+        <footer class="footer">Al exportar, el archivo CSV contiene contraseñas sin cifrar.</footer>
+      </section>
+    </main>
+
+    <dialog id="modal" class="modal">
+      <form id="modal-form" method="dialog">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">PASSWORD ADMIN</p>
+            <h2 id="modal-title"></h2>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="Cerrar">×</button>
+        </div>
+        <div id="modal-content" class="modal-content"></div>
+        <div class="modal-actions">
+          <button class="button secondary" value="cancel">Cancelar</button>
+          <button id="modal-submit" class="button primary" value="confirm">Continuar</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

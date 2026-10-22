@@ -1,0 +1,10 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Password Admin",
+  "outputfilename": "Password Admin",
+  "frontend:dir": "./frontend",
+  "devServer": "localhost:45678",
+  "author": {
+    "name": "Password Admin"
+  }
+}
