@@ -96,3 +96,4 @@ La carpeta debe permitir escritura. Si el pendrive está protegido contra escrit
 ## Icono
 
 La imagen fuente de la aplicación es `build/appicon.png`. Wails la usa para generar los iconos de la compilación para Windows y macOS; en Linux, la aplicación la usa como icono de ventana. Si ya existe `build/windows/icon.ico`, reemplázalo también con el ICO correspondiente para que Windows no siga usando el icono generado anteriormente. Después ejecuta `wails build` otra vez.
+---
