@@ -1,4 +1,5 @@
-# Password Admin
+
+# --** Password Admin **-- 
 
 Aplicación de escritorio hecha con Go y Wails. La bóveda persistente se guarda cifrada en un repositorio privado de GitHub; SQLite funciona únicamente en memoria mientras la aplicación está abierta. La interfaz está hecha con HTML, CSS y JavaScript, sin un servidor web externo.
 
@@ -154,4 +155,3 @@ Wails usa el WebView nativo de cada plataforma y sus dependencias de compilació
 ## Icono
 
 La imagen fuente de la aplicación es `build/appicon.png`. Wails la usa para generar los iconos de la compilación para Windows y macOS; en Linux, la aplicación la usa como icono de ventana. Si ya existe `build/windows/icon.ico`, reemplázalo también con el ICO correspondiente para que Windows no siga usando el icono generado anteriormente. Después ejecuta `wails build` otra vez.
----
