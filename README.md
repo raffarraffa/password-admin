@@ -5,14 +5,13 @@ Aplicación web local hecha con Go, HTML, CSS y JavaScript. El ejecutable sirve 
 
 ## Iniciar el servidor web
 
-Por defecto, Password Admin escucha únicamente en `http://127.0.0.1:45678/`. Para publicarlo bajo una subruta, por ejemplo `https://example.com/pass-admin/`, configura también `BASE_PATH`. Crea un archivo `.env` en la carpeta desde la que inicias el ejecutable o junto al ejecutable:
+Por defecto, Password Admin escucha únicamente en `http://127.0.0.1:45678`. Para cambiar el puerto, crea un archivo `.env` en la carpeta desde la que inicias el ejecutable o junto al ejecutable:
 
 ```env
 PORT=45678
-BASE_PATH=/pass-admin
 ```
 
-El proceso lee `.env` al iniciar. Las variables de entorno `PORT` y `BASE_PATH`, si están definidas, tienen prioridad sobre el archivo. Si no se configura `PORT`, se usa `45678`. `BASE_PATH` debe ser una ruta absoluta sencilla, sin barra final (por ejemplo, `/pass-admin`); si se omite o vale `/`, la aplicación se publica en la raíz. El servidor agrega la barra final y el HTML fija ese prefijo como base para que CSS, JavaScript y API sigan en `/pass-admin/`, incluso si alguien entra por `https://example.com/pass-admin` sin la barra final.
+El proceso lee `.env` al iniciar. Si la variable de entorno `PORT` está definida, tiene prioridad sobre el archivo. Si no se configura ninguna, se usa el puerto `45678`. El puerto debe estar entre 1 y 65535.
 
 Para compilar y ejecutar un binario (también sirve para desarrollo):
 
@@ -21,14 +20,10 @@ go build -o PasswordAdmin.exe .
 .\PasswordAdmin.exe
 ```
 
-Abre en el navegador la dirección que imprime el servidor. Para Nginx, configura el upstream hacia `http://127.0.0.1:<PORT>` y conserva el `Host` original. El `BASE_PATH` configurado en `.env` debe coincidir con el prefijo público. El backend acepta tanto el prefijo conservado como el prefijo eliminado por Nginx, así que funcionan ambas variantes de `proxy_pass`. **No publiques el upstream sin protección**: el backend sirve la bóveda desbloqueada del proceso. Usa HTTPS y restringe el acceso en Nginx con autenticación y/o una VPN. Por ejemplo, dentro de un `server` HTTPS para `/pass-admin/`, esta variante conserva el prefijo:
+Abre en el navegador la dirección que imprime el servidor. Para Nginx, configura el upstream hacia `http://127.0.0.1:<PORT>`. **No publiques el upstream sin protección**: el backend sirve la bóveda desbloqueada del proceso. Usa HTTPS y restringe el acceso en Nginx con autenticación y/o una VPN. Por ejemplo, dentro de un `server` HTTPS:
 
 ```nginx
-location = /pass-admin {
-    return 301 /pass-admin/;
-}
-
-location /pass-admin/ {
+location / {
     auth_basic "Password Admin";
     auth_basic_user_file /etc/nginx/.htpasswd;
     proxy_pass http://127.0.0.1:45678;
@@ -37,7 +32,7 @@ location /pass-admin/ {
 }
 ```
 
-Sin barra final en `proxy_pass`, Nginx conserva `/pass-admin/`; con barra final, elimina ese prefijo antes de reenviar. El backend sirve la interfaz, CSS, JavaScript y API en ambos casos. Mantén el servidor Go escuchando en la interfaz local.
+Mantén el servidor Go escuchando en la interfaz local.
 
 ## Configurar GitHub por primera vez
 
