@@ -424,7 +424,8 @@ $("#export-button").addEventListener("click", async () => {
     return;
   }
   try {
-    if (await ExportCSV(selectedAccountID)) notify("Exportación completada.");
+    const path = await ExportCSV(selectedAccountID);
+    if (path) notify(`Exportación guardada en ${path}.`);
   } catch (error) {
     reportError(error);
   }

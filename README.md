@@ -1,160 +1,97 @@
 # Password Admin
 
-Aplicación web local hecha con Go, HTML, CSS y JavaScript. El ejecutable sirve la interfaz y la API en `127.0.0.1`; Nginx puede actuar como proxy inverso. La bóveda se conserva en un archivo SQLite del mismo servidor y no necesita GitHub ni conexión a Internet.
+Este proyecto tiene dos variantes que no se deben confundir. La compilación de escritorio Wails abre una ventana propia en Windows o Linux y no inicia un servidor web. La variante web Go sirve HTTP en `127.0.0.1:45678` y puede ejecutarse de forma persistente con systemd; consulta la sección de servicio web más abajo. Los binarios de ambas variantes no son intercambiables.
 
-Esta versión crea una bóveda local nueva. No descarga ni migra automáticamente una bóveda que estuviera en GitHub; los datos remotos no se modifican.
+## Uso portable
 
-## Iniciar el servidor web
+1. Copia el ejecutable de tu sistema operativo a una carpeta propia del escritorio o a un pendrive.
+2. Opcionalmente, copia `.env.example` en esa misma carpeta con el nombre `.env`.
+3. Ejecuta `PasswordAdmin-windows-amd64.exe` en Windows o `password-admin-linux-amd64` en Linux.
+4. En el primer inicio, crea una contraseña maestra. En los siguientes, desbloquea la bóveda con esa contraseña.
 
-Por defecto, Password Admin escucha únicamente en `http://127.0.0.1:45678`. Al iniciar, el proceso lee `.env` desde la carpeta actual o desde la carpeta del ejecutable. Las variables del entorno tienen prioridad sobre los valores del archivo.
+Por defecto, la base se crea como `data/password-admin.sqlite` junto al ejecutable. La aplicación crea `data` si no existe. En Linux, el archivo SQLite se limita a permisos `0600`. La carpeta debe permitir escritura.
 
-Configura el puerto y la ubicación persistente de SQLite:
+El `.env` es opcional. Las variables del entorno tienen prioridad; si existe, la app lee `.env` desde la carpeta del ejecutable:
 
 ```env
-PORT=45678
 DB_PATH=./data/password-admin.sqlite
 ```
 
-`DB_PATH` puede ser una ruta absoluta o relativa al directorio del ejecutable. Por ejemplo, `./data/password-admin.sqlite` guarda la base en la carpeta `data` junto al ejecutable, sin depender de desde dónde se inicia el proceso. Si no se configura, la base se crea como `password-admin.sqlite` junto al ejecutable. La aplicación crea la carpeta de datos si no existe. Detén la aplicación antes de copiar o respaldar la base de datos.
+`DB_PATH` puede ser absoluto o relativo al directorio del ejecutable. Para trasladar la bóveda, cierra la aplicación y copia junta la carpeta `data` (o la ruta configurada en `DB_PATH`) y el ejecutable. No ejecutes simultáneamente dos copias que apunten al mismo archivo SQLite. Haz copias de seguridad con la aplicación cerrada.
 
-Para compilar y ejecutar en Windows:
+La aplicación usa el runtime de escritorio del sistema: WebView2 Evergreen en Windows y GTK 3/WebKit2GTK 4.0 en Linux. Estos componentes deben estar disponibles en el equipo de destino; por eso el ejecutable y la base son portables, pero no incluyen los runtimes del sistema.
 
-```powershell
-go build -o PasswordAdmin.exe .
-.\PasswordAdmin.exe
-```
+## Datos y seguridad
 
-Abre en el navegador la dirección que imprime el servidor. Mantén el servidor Go escuchando en la interfaz local. No publiques el upstream sin protección: la aplicación web no administra usuarios ni sesiones individuales. Usa HTTPS y restringe el acceso en Nginx con autenticación y/o una VPN. Por ejemplo, dentro de un `server` HTTPS:
+- Los usuarios y las contraseñas se cifran con AES-256-GCM. Los nombres de cuentas, sitios, URLs y otros metadatos quedan legibles en SQLite; la base completa no está cifrada.
+- La clave se deriva de la contraseña maestra mediante PBKDF2-HMAC-SHA-256 con una sal aleatoria. La clave solo se mantiene en memoria mientras la app está abierta y desbloqueada.
+- La contraseña maestra no se puede recuperar. Conserva una copia protegida de la base y recuerda la contraseña.
+- La aplicación no sincroniza datos con GitHub ni necesita conexión a Internet.
+- Los CSV exportados contienen contraseñas en texto claro. Guárdalos con cuidado y elimínalos después de usarlos.
+- Esta versión crea una bóveda SQLite local nueva; no importa automáticamente los archivos de bóveda ni repositorios de versiones anteriores.
 
-```nginx
-location / {
-    auth_basic "Password Admin";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-    proxy_pass http://127.0.0.1:45678;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
+## Uso de la aplicación
 
-### Publicar bajo una subruta
+1. Crea una cuenta para agrupar las contraseñas, por ejemplo «Personal» o «Trabajo».
+2. Pulsa **Importar CSV** para cargar un archivo exportado desde Chrome y asignarlo a una cuenta.
+3. Busca y consulta las entradas desde la ventana de la aplicación.
+4. Pulsa **Exportar para Chrome** para elegir dónde guardar un CSV y luego impórtalo en Chrome.
 
-Para publicarlo en una subruta como `https://server/pass-admin/`, conserva la barra final y configura Nginx para retirar el prefijo al reenviar:
+La opción **Todas las cuentas** muestra y busca las entradas de toda la bóveda. El CSV de Chrome no conserva la organización por cuentas. Se reconocen los encabezados `url` y `password`; `name` y `username` son opcionales. Se admiten comas, comillas y saltos de línea dentro de los valores.
 
-```nginx
-location = /pass-admin {
-    return 301 /pass-admin/;
-}
+## Compilar
 
-location /pass-admin/ {
-    proxy_pass http://127.0.0.1:45678/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
+Se requiere Go 1.22 o posterior, Wails CLI 2.10.2 y Node.js no es necesario para este frontend. SQLite usa `modernc.org/sqlite` sin CGO. Wails requiere CGO y las bibliotecas de desarrollo de la plataforma.
 
-La barra final de `proxy_pass` hace que Nginx quite `/pass-admin/` al enviar la solicitud a Go, mientras el navegador conserva el prefijo para cargar `./app.css`, `./app.js` y `./api/...`. Si la ruta pública es otra, reemplaza `/pass-admin` en ambas reglas.
+### Windows amd64
 
-## Base de datos y seguridad
-
-- La base SQLite persistente es `DB_PATH`. Protege el archivo y su carpeta con permisos del sistema operativo; en Linux la aplicación restringe la base a permisos `0600`.
-- Los nombres de usuario y las contraseñas guardados se cifran con AES-256-GCM. Los nombres de cuentas, nombres de sitios, URLs y otros metadatos permanecen legibles en SQLite: el archivo completo **no** está cifrado.
-- La clave de cifrado se deriva de la contraseña maestra con PBKDF2-HMAC-SHA-256 y una sal aleatoria. La clave se mantiene en memoria mientras la aplicación está desbloqueada y no se guarda en la base. Al reiniciar, hay que desbloquear de nuevo la bóveda.
-- La contraseña maestra no se puede recuperar. Conserva una copia de seguridad de la base y de `.env` en un medio protegido. Una copia de la base no sustituye la contraseña maestra.
-- No se debe ejecutar más de una instancia de Password Admin a la vez usando el mismo archivo SQLite.
-- La interfaz web no añade autenticación de usuarios/sesiones. Si das acceso remoto con Nginx, configura autenticación fuerte y HTTPS. El servidor Go escucha en `127.0.0.1` de forma predeterminada.
-- El CSV exportado contiene contraseñas en texto claro. Guárdalo con cuidado y elimínalo después de usarlo.
-
-## Uso
-
-1. En el primer inicio, crea una contraseña maestra de al menos 8 caracteres.
-2. Crea una cuenta para agrupar contraseñas, por ejemplo «Personal» o «Trabajo».
-3. En Chrome, exporta las contraseñas como CSV y pulsa **Importar CSV**.
-4. Selecciona una cuenta para buscar y consultar sus entradas.
-5. Pulsa **Exportar para Chrome** para guardar un CSV y luego utiliza la opción de importación de contraseñas de Chrome.
-
-La opción **Todas las cuentas** muestra y busca las entradas de toda la bóveda. Si esa vista está seleccionada, la exportación genera un solo CSV con contraseñas de todas las cuentas. El CSV de Chrome no conserva la organización por cuentas.
-
-Se reconocen los encabezados `url` y `password`; `name` y `username` son opcionales. El CSV puede contener comas, comillas o saltos de línea dentro de los valores.
-
-## Compilar para Linux y Windows
-
-Instala Go 1.22 o posterior y ejecuta los comandos desde la raíz del proyecto. No hace falta Wails, Node.js, SQLite externo ni compilar el frontend. Los ejemplos generan binarios para Intel/AMD de 64 bits (`amd64`); para Linux ARM de 64 bits, cambia `GOARCH=amd64` por `GOARCH=arm64`.
-
-### Compilar en Windows
-
-En PowerShell:
+En Windows, instala WebView2 Evergreen Runtime y Wails CLI, luego compila desde la raíz del proyecto:
 
 ```powershell
-New-Item -ItemType Directory -Force .\dist | Out-Null
-$env:GOOS = "windows"
-$env:GOARCH = "amd64"
-$env:CGO_ENABLED = "0"
-go build -trimpath -o .\dist\PasswordAdmin-windows-amd64.exe .
-if ($LASTEXITCODE -ne 0) { throw "Falló la compilación para Windows" }
-Copy-Item .env.example .\dist\.env
-Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+wails build -skipbindings -platform windows/amd64 -o PasswordAdmin-windows-amd64
 ```
 
-Edita `dist\.env` si necesitas cambiar el puerto o la ruta de la base. `DB_PATH=./data/...` se guarda junto al ejecutable:
+El binario se genera en `build\bin\PasswordAdmin-windows-amd64.exe`. Copia el ejecutable a la carpeta portable y ejecútalo normalmente.
 
-```powershell
-.\dist\PasswordAdmin-windows-amd64.exe
-```
+### Linux amd64
 
-### Compilar para Linux desde Windows
-
-Go puede generar el binario Linux desde Windows sin instalar herramientas de compilación de Linux:
-
-```powershell
-New-Item -ItemType Directory -Force .\dist | Out-Null
-$env:GOOS = "linux"
-$env:GOARCH = "amd64"
-$env:CGO_ENABLED = "0"
-go build -trimpath -o .\dist\password-admin-linux-amd64 .
-if ($LASTEXITCODE -ne 0) { throw "Falló la compilación para Linux" }
-Copy-Item .env.example .\dist\.env
-Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
-```
-
-El ejecutable Linux no tiene extensión `.exe`. Transfiere `password-admin-linux-amd64` y `.env` a una máquina Linux de la misma arquitectura:
+Compila en Linux (no es posible generar el ejecutable de escritorio Linux con un `GOOS=linux` cruzado desde Windows: Wails necesita CGO y GTK/WebKit del sistema). En Debian/Ubuntu instala las dependencias de compilación:
 
 ```sh
-mkdir -p "$HOME/password-admin"
-cp password-admin-linux-amd64 .env "$HOME/password-admin/"
-cd "$HOME/password-admin"
+sudo apt-get install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+wails build -skipbindings -platform linux/amd64 -o password-admin-linux-amd64
+```
+
+El binario se genera en `build/bin/password-admin-linux-amd64`. En el pendrive, permite su ejecución y escritura en la carpeta de datos:
+
+```sh
 chmod 700 password-admin-linux-amd64
-chmod 600 .env
 ./password-admin-linux-amd64
 ```
 
-La base se creará en `data/password-admin.sqlite`, junto al ejecutable. El servicio imprime la URL local para abrir en el navegador.
+El Linux de destino necesita GTK 3 y WebKit2GTK 4.0 compatibles. Para distribuciones que solo proveen WebKit2GTK 4.1, compila Wails con la etiqueta `webkit2_41`.
 
-También puedes compilar directamente en Linux:
+### Ejecutar la compilación web Go como servicio systemd (Linux)
 
-```sh
-mkdir -p dist
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o dist/password-admin-linux-amd64 .
-cp .env.example dist/.env
-```
+Estas instrucciones son para el **binario de la variante web Go**, que sirve HTTP en `127.0.0.1:45678`; no para el ejecutable Wails de escritorio. En este árbol, la compilación web previa está en `dist/password-admin-linux-amd64`, mientras que `build/bin/password-admin-linux-amd64` es la app de escritorio. No intercambies esos binarios. El código fuente actual de este checkout es la variante Wails; para volver a compilar el servidor web necesitas la versión del código que incluye su `main.go` HTTP.
 
-## Ejecutar como servicio Linux con systemd
-
-Instala el binario en una carpeta persistente. El servicio usa un usuario propio y reinicia el proceso cuando falla:
+Instala el binario web en `/opt` y reserva `/var/lib` para la base persistente:
 
 ```sh
-sudo useradd --system --create-home --home-dir /opt/password-admin --shell /usr/sbin/nologin password-admin
-sudo install -o password-admin -g password-admin -m 700 password-admin-linux-amd64 /opt/password-admin/password-admin
-sudo install -o password-admin -g password-admin -m 600 .env /opt/password-admin/.env
-sudo install -d -o password-admin -g password-admin -m 700 /opt/password-admin/data
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin password-admin
+sudo install -d -o root -g root -m 755 /opt/password-admin
+sudo install -o root -g root -m 755 dist/password-admin-linux-amd64 /opt/password-admin/password-admin
+sudo install -d -o password-admin -g password-admin -m 700 /var/lib/password-admin
 ```
 
 Crea `/etc/systemd/system/password-admin.service`:
 
 ```ini
 [Unit]
-Description=Password Admin web server
-After=network-online.target
-Wants=network-online.target
+Description=Password Admin Go web server
+After=network.target
 
 [Service]
 Type=simple
@@ -162,42 +99,55 @@ User=password-admin
 Group=password-admin
 WorkingDirectory=/opt/password-admin
 ExecStart=/opt/password-admin/password-admin
+Environment=PORT=45678
+Environment=DB_PATH=/var/lib/password-admin/password-admin.sqlite
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/password-admin/data
+ReadWritePaths=/var/lib/password-admin
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Activa y comprueba el servicio:
+Recarga systemd, habilita el inicio automático al arrancar Linux e inicia el servicio:
 
 ```sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now password-admin
 sudo systemctl status password-admin
-sudo journalctl -u password-admin -f
+curl http://127.0.0.1:45678/
 ```
 
-El `.env` debe incluir `PORT=45678` y `DB_PATH=/opt/password-admin/data/password-admin.sqlite`. La aplicación escucha en `127.0.0.1:45678`, disponible para Nginx en el mismo servidor. Después de editar `.env`, reinicia el servicio con `sudo systemctl restart password-admin`.
+La bóveda queda guardada en `/var/lib/password-admin/password-admin.sqlite`, incluso al reiniciar o actualizar el ejecutable. Para ver registros o administrar el proceso:
 
-## Desarrollo y pruebas
+```sh
+sudo journalctl -u password-admin -f
+sudo systemctl restart password-admin
+sudo systemctl stop password-admin
+```
+
+El servidor web escucha solo en `127.0.0.1`, así que no queda publicado directamente en la red. Para acceder desde otro equipo, pon Nginx delante con HTTPS y autenticación; no expongas este servidor sin protección, porque la aplicación no gestiona usuarios ni sesiones individuales.
+
+### Generar los dos ejecutables
+
+Windows puede compilar su ejecutable localmente. Linux debe compilarse en un host Linux con las bibliotecas indicadas (también puede usarse una máquina virtual Linux). Una vez obtenidos, coloca ambos archivos en el pendrive o en sus carpetas correspondientes:
+
+```text
+PasswordAdmin-windows-amd64.exe
+password-admin-linux-amd64
+data/
+  password-admin.sqlite
+```
+
+La carpeta `data/` se crea en el primer inicio; no hace falta crearla manualmente. No uses el binario de un sistema operativo en el otro.
+
+## Desarrollo
 
 ```sh
 go test ./...
 go vet ./...
 ```
-
-No se requiere SQLite externo: el proyecto usa `modernc.org/sqlite` sin CGO.
-
-## Solución de problemas
-
-- **La base se crea en otra carpeta:** comprueba `DB_PATH`. Las rutas relativas se resuelven desde el directorio del ejecutable; las rutas absolutas se usan tal como están configuradas.
-- **No se puede crear o abrir SQLite:** comprueba los permisos de escritura del usuario del servicio en la carpeta indicada en `DB_PATH` y confirma que no haya otra instancia usando la misma base.
-- **El puerto no cambia:** reinicia el ejecutable y verifica que `PORT` esté en `.env` o en el entorno del proceso. La variable del entorno tiene prioridad y el puerto no debe estar ocupado.
-- **No se puede desbloquear la bóveda:** confirma la contraseña maestra y que se está abriendo el archivo correcto. La contraseña no se puede recuperar.
-- **La página no carga bajo una subruta:** verifica que la dirección termine con `/` y que `proxy_pass` incluya la barra final como en el ejemplo.

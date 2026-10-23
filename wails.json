@@ -1,0 +1,9 @@
+{
+  "name": "password-admin",
+  "outputfilename": "PasswordAdmin",
+  "frontend:dir": "frontend",
+  "frontend:install": "",
+  "frontend:build": "",
+  "build:dir": "build",
+  "wailsjsdir": "frontend/wailsjs"
+}

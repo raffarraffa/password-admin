@@ -7,31 +7,19 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"net"
-	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
-	"time"
+
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
 //go:embed all:frontend
 var frontend embed.FS
 
-const defaultPort = "45678"
-
 func main() {
-	port, err := configuredPort()
-	if err != nil {
-		log.Fatal(err)
-	}
-	assets, err := fs.Sub(frontend, "frontend")
-	if err != nil {
-		log.Fatal(err)
-	}
 	databasePath, err := configuredDatabasePath()
 	if err != nil {
 		log.Fatal(err)
@@ -40,53 +28,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("abrir base de datos local %q: %v", databasePath, err)
 	}
-	addr := net.JoinHostPort("127.0.0.1", port)
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           newWebHandler(application, http.FS(assets)),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	listener, err := net.Listen("tcp", server.Addr)
+	defer application.shutdown()
+
+	assets, err := fs.Sub(frontend, "frontend")
 	if err != nil {
-		log.Fatalf("iniciar servidor web en %s: %v", server.Addr, err)
+		log.Fatal(err)
 	}
-	log.Printf("Password Admin disponible en http://%s", listener.Addr())
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	serveErr := make(chan error, 1)
-	go func() {
-		serveErr <- server.Serve(listener)
-	}()
-
-	select {
-	case err := <-serveErr:
-		if !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("servidor web: %v", err)
-		}
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("cerrar servidor web: %v", err)
-		}
-		cancel()
+	if err := wails.Run(&options.App{
+		Title:     "Password Admin",
+		Width:     1280,
+		Height:    820,
+		MinWidth:  960,
+		MinHeight: 640,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		OnStartup:  application.startup,
+		OnShutdown: func(context.Context) { application.shutdown() },
+		Bind:       []interface{}{application},
+	}); err != nil {
+		log.Fatalf("iniciar ventana de escritorio: %v", err)
 	}
-	application.shutdown()
-}
-
-func configuredPort() (string, error) {
-	port, err := configuredValue("PORT")
-	if err != nil {
-		return "", err
-	}
-	if port == "" {
-		port = defaultPort
-	}
-	number, err := strconv.Atoi(port)
-	if err != nil || number < 1 || number > 65535 {
-		return "", fmt.Errorf("PORT debe ser un número entre 1 y 65535")
-	}
-	return strconv.Itoa(number), nil
 }
 
 func configuredDatabasePath() (string, error) {
@@ -104,7 +66,7 @@ func configuredDatabasePath() (string, error) {
 		}
 		return filepath.Join(filepath.Dir(executable), databasePath), nil
 	}
-	return filepath.Join(filepath.Dir(executable), "password-admin.sqlite"), nil
+	return filepath.Join(filepath.Dir(executable), "data", "password-admin.sqlite"), nil
 }
 
 func configuredValue(key string) (string, error) {
@@ -115,45 +77,33 @@ func configuredValue(key string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("localizar el ejecutable para leer .env: %w", err)
 	}
-	workingDirectory, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("localizar la carpeta actual para leer .env: %w", err)
-	}
-	paths := []string{
-		filepath.Join(workingDirectory, ".env"),
-		filepath.Join(filepath.Dir(executable), ".env"),
-	}
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return "", fmt.Errorf("leer %s: %w", path, err)
-		}
-		if value := parseEnvValue(data, key); value != "" {
-			return value, nil
-		}
-	}
-	return "", nil
+	path := filepath.Join(filepath.Dir(executable), ".env")
+	return readDotEnvValue(path, key)
 }
 
-func parsePortFromEnv(data []byte) string {
-	return parseEnvValue(data, "PORT")
+func readDotEnvValue(path, key string) (string, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("leer %s: %w", path, err)
+	}
+	return parseEnvValue(data, key), nil
 }
 
 func parseEnvValue(data []byte, key string) string {
-	var port string
+	var value string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		line = strings.TrimPrefix(line, "export ")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		name, value, found := strings.Cut(line, "=")
+		name, envValue, found := strings.Cut(line, "=")
 		if found && strings.TrimSpace(name) == key {
-			port = strings.Trim(strings.TrimSpace(value), `"'`)
+			value = strings.Trim(strings.TrimSpace(envValue), `"'`)
 		}
 	}
-	return port
+	return value
 }

@@ -6,21 +6,10 @@ import (
 	"testing"
 )
 
-func TestParsePortFromEnv(t *testing.T) {
-	got := parsePortFromEnv([]byte("# server port\nHOST=localhost\nexport PORT = '8123'\nPORT=9000\n"))
-	if got != "9000" {
-		t.Fatalf("parsePortFromEnv() = %q, want last PORT value %q", got, "9000")
-	}
-}
-
-func TestConfiguredPortUsesEnvironment(t *testing.T) {
-	t.Setenv("PORT", "8123")
-	got, err := configuredPort()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "8123" {
-		t.Fatalf("configuredPort() = %q, want %q", got, "8123")
+func TestParseEnvValue(t *testing.T) {
+	got := parseEnvValue([]byte("# database path\nHOST=localhost\nexport DB_PATH = './data/vault.sqlite'\nDB_PATH=/other/vault.sqlite\n"), "DB_PATH")
+	if got != "/other/vault.sqlite" {
+		t.Fatalf("parseEnvValue() = %q, want last DB_PATH value", got)
 	}
 }
 
@@ -53,51 +42,40 @@ func TestConfiguredDatabasePathResolvesRelativeToExecutable(t *testing.T) {
 	}
 }
 
-func TestConfiguredPortReadsDotEnvFromWorkingDirectory(t *testing.T) {
-	t.Setenv("PORT", "")
+func TestConfiguredDatabasePathDefaultsToPortableDataFolder(t *testing.T) {
 	t.Setenv("DB_PATH", "")
-	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, ".env"),
-		[]byte("PORT=8124\nDB_PATH=./data/password-admin.sqlite\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	original, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(directory); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(original); err != nil {
-			t.Errorf("restore working directory: %v", err)
-		}
-	})
-
-	got, err := configuredPort()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "8124" {
-		t.Fatalf("configuredPort() = %q, want %q", got, "8124")
-	}
-	databasePath, err := configuredDatabasePath()
-	if err != nil {
-		t.Fatal(err)
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDatabasePath := filepath.Join(filepath.Dir(executable), "data", "password-admin.sqlite")
-	if databasePath != wantDatabasePath {
-		t.Fatalf("configuredDatabasePath() = %q, want %q", databasePath, wantDatabasePath)
+	want := filepath.Join(filepath.Dir(executable), "data", "password-admin.sqlite")
+
+	got, err := configuredDatabasePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("configuredDatabasePath() = %q, want %q", got, want)
 	}
 }
 
-func TestConfiguredPortRejectsInvalidValue(t *testing.T) {
-	t.Setenv("PORT", "70000")
-	if _, err := configuredPort(); err == nil {
-		t.Fatal("configuredPort() accepted a port outside the valid range")
+func TestConfiguredValueReadsDotEnvFromExecutableDirectory(t *testing.T) {
+	dotEnv := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(dotEnv, []byte("DB_PATH=./data/vault.sqlite\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readDotEnvValue(dotEnv, "DB_PATH")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "./data/vault.sqlite" {
+		t.Fatalf("readDotEnvValue() = %q, want relative DB_PATH", got)
+	}
+}
+
+func TestReadDotEnvValueIgnoresMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", ".env")
+	if _, err := readDotEnvValue(path, "DB_PATH"); err != nil {
+		t.Fatalf("missing .env error = %v, want nil", err)
 	}
 }

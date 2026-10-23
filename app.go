@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type VaultStatus struct {
@@ -23,6 +27,7 @@ type ImportResult struct {
 type App struct {
 	mu    sync.Mutex
 	store *Store
+	ctx   context.Context
 }
 
 func NewApp(databasePath string) (*App, error) {
@@ -31,6 +36,10 @@ func NewApp(databasePath string) (*App, error) {
 		return nil, err
 	}
 	return &App{store: store}, nil
+}
+
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
 }
 
 func (a *App) shutdown() {
@@ -169,7 +178,37 @@ func (a *App) ImportCSV(content string, accountID int64, newAccountName string) 
 	return ImportResult{AccountName: account.Name, Count: len(entries)}, nil
 }
 
-func (a *App) ExportCSV(accountID int64) ([]byte, error) {
+func (a *App) ExportCSVToFile(accountID int64) (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("la ventana de escritorio todavía no está lista")
+	}
+	data, err := a.exportCSV(accountID)
+	if err != nil {
+		return "", err
+	}
+	defer clear(data)
+
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Exportar contraseñas",
+		DefaultFilename: "chrome-passwords.csv",
+		Filters: []runtime.FileFilter{{
+			DisplayName: "Archivos CSV (*.csv)",
+			Pattern:     "*.csv",
+		}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("elegir dónde guardar el CSV: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(filepath.Clean(path), data, 0600); err != nil {
+		return "", fmt.Errorf("guardar el archivo CSV: %w", err)
+	}
+	return path, nil
+}
+
+func (a *App) exportCSV(accountID int64) ([]byte, error) {
 	a.mu.Lock()
 	if err := a.requireUnlockedLocked(); err != nil {
 		a.mu.Unlock()
